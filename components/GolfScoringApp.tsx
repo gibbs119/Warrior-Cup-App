@@ -80,28 +80,32 @@ export default function GolfScoringApp() {
 
   // Firebase real-time listener
   useEffect(() => {
-    if (!tournId) return;
+  if (!tournId) return;
 
-    const tournRef = ref(db, `tournaments/${tournId}`);
-    const unsub = onValue(tournRef, (snap) => {
-      const data = snap.val();
-      if (data) setTData(data);
+  console.log("Listening to tournament:", tournId); // for debugging
+
+  const tournRef = ref(db, `tournaments/${tournId}`);
+  const tournUnsub = onValue(tournRef, (snap) => {
+    const data = snap.val();
+    console.log("Tournament data received:", data);
+    if (data) setTData(data);
+  });
+
+  let scoresUnsub;
+  if (activeMatchId) {
+    const scoresRef = ref(db, `scores/${tournId}/${activeMatchId}`);
+    scoresUnsub = onValue(scoresRef, (snap) => {
+      const scores = snap.val();
+      console.log("Scores updated:", scores);
+      if (scores) setLocalScores(scores);
     });
+  }
 
-    let scoresUnsub;
-    if (activeMatchId) {
-      const scoresRef = ref(db, `scores/${tournId}/${activeMatchId}`);
-      scoresUnsub = onValue(scoresRef, (snap) => {
-        const scores = snap.val();
-        if (scores) setLocalScores(scores);
-      });
-    }
-
-    return () => {
-      unsub();
-      if (scoresUnsub) scoresUnsub();
-    };
-  }, [tournId, activeMatchId]);
+  return () => {
+    tournUnsub();
+    if (scoresUnsub) scoresUnsub();
+  };
+}, [tournId, activeMatchId]);
 
   // ── Login / Create Tournament ───────────────────────────────────────────────
   const createTournament = async () => {
