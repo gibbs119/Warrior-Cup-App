@@ -1,6 +1,7 @@
 // components/GolfScoringApp.tsx
 'use client';
-
+import { db } from '@/lib/firebase';  // adjust to '@/Lib/firebase' if folder is capitalized
+import { ref, onValue, set } from 'firebase/database';
 import { useState, useEffect, useRef } from 'react';
 import {
   Trophy, Plus, Trash2, Edit2, Save, Award, ChevronLeft, ChevronRight,
