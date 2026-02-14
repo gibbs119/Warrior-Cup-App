@@ -128,3 +128,24 @@ export default function GolfScoringApp() {
   };
 
   // ── Save / Load Helpers
+// Firebase load tournament
+const loadTournament = async (id) => {
+  return new Promise((resolve) => {
+    onValue(ref(db, `tournaments/${id}`), (snapshot) => {
+      const data = snapshot.val();
+      resolve(data || null);
+    }, { onlyOnce: true });
+  });
+};
+
+// Firebase save tournament
+const saveTournament = async (data, id = tournId) => {
+  try {
+    await set(ref(db, `tournaments/${id}`), data);
+    console.log("Tournament saved to Firebase");
+  } catch (err) {
+    console.error("Save tournament failed:", err);
+  }
+};
+
+// Add similar for loadMatchScores and saveMatchScores if you have them
