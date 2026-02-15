@@ -5,7 +5,7 @@ import {
   Trophy, Plus, Trash2, Save, Award, ChevronLeft, ChevronRight,
   Check, Flag, Search, RefreshCw, Lock, Users, Settings, LogOut
 } from 'lucide-react';
-import { db } from '@/lib/firebase';
+import { db } from '@/Lib/firebase';
 import { ref, onValue, set, get } from 'firebase/database';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
