@@ -286,21 +286,27 @@ export default function GolfScoringApp() {
    const unsubTourn = onValue(tournRef, snap => {
   const data = snap.val() as Tournament | null;
   if (data) {
-    const normalized: Tournament = {
-      ...data,
-      players:      data.players      ?? [],
-      matches:      data.matches      ?? [],
-      matchResults: data.matchResults ?? [],
-      courses:      data.courses      ?? PRESET_COURSES,
-      teams: {
-        team1: data.teams?.team1 ?? [],
-        team2: data.teams?.team2 ?? [],
-      },
-      teamNames: {
-        team1: data.teamNames?.team1 ?? 'Team 1',
-        team2: data.teamNames?.team2 ?? 'Team 2',
-      },
-    };
+    const emptyPairings = { t1p1: [], t1p2: [], t2p1: [], t2p2: [] };
+const emptyHcps     = { t1p1: 0,  t1p2: 0,  t2p1: 0,  t2p2: 0  };
+const normalized: Tournament = {
+  ...data,
+  players:      data.players      ?? [],
+  matches:      (data.matches ?? []).map(m => ({
+    ...m,
+    pairings:    m.pairings    ? Object.fromEntries(Object.entries(m.pairings).map(([k,v])=>[k, v??[]])) : emptyPairings,
+    pairingHcps: m.pairingHcps ? Object.fromEntries(Object.entries(m.pairingHcps).map(([k,v])=>[k, v??0])) : emptyHcps,
+  })),
+  matchResults: data.matchResults ?? [],
+  courses:      data.courses      ?? PRESET_COURSES,
+  teams: {
+    team1: data.teams?.team1 ?? [],
+    team2: data.teams?.team2 ?? [],
+  },
+  teamNames: {
+    team1: data.teamNames?.team1 ?? 'Team 1',
+    team2: data.teamNames?.team2 ?? 'Team 2',
+  },
+};
     setTData(normalized);
   }
 });
