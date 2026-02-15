@@ -283,10 +283,27 @@ export default function GolfScoringApp() {
     unsubscribeRef.current?.();
 
     const tournRef = ref(db, `tournaments/${tournId}`);
-    const unsubTourn = onValue(tournRef, snap => {
-      const data = snap.val() as Tournament | null;
-      if (data) setTData(data);
-    });
+   const unsubTourn = onValue(tournRef, snap => {
+  const data = snap.val() as Tournament | null;
+  if (data) {
+    const normalized: Tournament = {
+      ...data,
+      players:      data.players      ?? [],
+      matches:      data.matches      ?? [],
+      matchResults: data.matchResults ?? [],
+      courses:      data.courses      ?? PRESET_COURSES,
+      teams: {
+        team1: data.teams?.team1 ?? [],
+        team2: data.teams?.team2 ?? [],
+      },
+      teamNames: {
+        team1: data.teamNames?.team1 ?? 'Team 1',
+        team2: data.teamNames?.team2 ?? 'Team 2',
+      },
+    };
+    setTData(normalized);
+  }
+});
 
     let unsubScores: (() => void) | undefined;
     if (activeMatchId) {
