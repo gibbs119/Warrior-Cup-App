@@ -1,5 +1,5 @@
 'use client';
-import React from 'react'; // ← Fixes JSX parsing issues in some Vercel/Next builds
+import React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import {
   Trophy, Plus, Trash2, Save, Award, ChevronLeft, ChevronRight,
