@@ -63,76 +63,76 @@ const getEmptyPairings = (format: string) => {
 // ─── Pre-loaded Courses ───────────────────────────────────────────────────────
 const PRESET_COURSES: Course[] = [
   {
-    id:'hawks_landing', name:'Hawks Landing Golf Course', location:'Lake Buena Vista, FL',
+    id:'hawks_landing', name:'Hawks Landing Golf Club', location:'Orlando, FL',
     tees:[
-      { name:'Black', slope:133, rating:70.2, par:71, holes:[
-        {h:1,par:4,yards:425,rank:10},{h:2,par:3,yards:147,rank:18},{h:3,par:4,yards:385,rank:4},
-        {h:4,par:5,yards:535,rank:2},{h:5,par:4,yards:332,rank:16},{h:6,par:5,yards:475,rank:14},
-        {h:7,par:3,yards:230,rank:8},{h:8,par:4,yards:353,rank:12},{h:9,par:4,yards:404,rank:6},
-        {h:10,par:5,yards:541,rank:7},{h:11,par:4,yards:385,rank:9},{h:12,par:4,yards:425,rank:5},
-        {h:13,par:3,yards:160,rank:15},{h:14,par:4,yards:422,rank:3},{h:15,par:3,yards:142,rank:17},
-        {h:16,par:4,yards:390,rank:11},{h:17,par:4,yards:275,rank:13},{h:18,par:3,yards:204,rank:1},
+      { name:'Black', slope:131, rating:72.6, par:71, holes:[
+        {h:1,par:4,yards:426,rank:10},{h:2,par:3,yards:182,rank:18},{h:3,par:4,yards:387,rank:4},
+        {h:4,par:5,yards:535,rank:2},{h:5,par:4,yards:342,rank:16},{h:6,par:5,yards:475,rank:14},
+        {h:7,par:3,yards:229,rank:8},{h:8,par:4,yards:353,rank:12},{h:9,par:4,yards:407,rank:6},
+        {h:10,par:5,yards:554,rank:7},{h:11,par:4,yards:390,rank:9},{h:12,par:4,yards:412,rank:5},
+        {h:13,par:3,yards:160,rank:15},{h:14,par:4,yards:432,rank:3},{h:15,par:3,yards:142,rank:17},
+        {h:16,par:4,yards:399,rank:13},{h:17,par:3,yards:212,rank:11},{h:18,par:5,yards:565,rank:1},
       ]},
-      { name:'Green', slope:126, rating:67.8, par:71, holes:[
-        {h:1,par:4,yards:391,rank:10},{h:2,par:3,yards:132,rank:18},{h:3,par:4,yards:356,rank:4},
-        {h:4,par:5,yards:501,rank:2},{h:5,par:4,yards:307,rank:16},{h:6,par:5,yards:443,rank:14},
-        {h:7,par:3,yards:199,rank:8},{h:8,par:4,yards:328,rank:12},{h:9,par:4,yards:374,rank:6},
-        {h:10,par:5,yards:506,rank:7},{h:11,par:4,yards:360,rank:9},{h:12,par:4,yards:395,rank:5},
-        {h:13,par:3,yards:140,rank:15},{h:14,par:4,yards:393,rank:3},{h:15,par:3,yards:122,rank:17},
-        {h:16,par:4,yards:362,rank:11},{h:17,par:4,yards:249,rank:13},{h:18,par:3,yards:178,rank:1},
+      { name:'Green', slope:129, rating:70.3, par:71, holes:[
+        {h:1,par:4,yards:395,rank:10},{h:2,par:3,yards:156,rank:18},{h:3,par:4,yards:372,rank:4},
+        {h:4,par:5,yards:507,rank:2},{h:5,par:4,yards:322,rank:16},{h:6,par:5,yards:462,rank:14},
+        {h:7,par:3,yards:213,rank:8},{h:8,par:4,yards:329,rank:12},{h:9,par:4,yards:389,rank:6},
+        {h:10,par:5,yards:486,rank:7},{h:11,par:4,yards:364,rank:9},{h:12,par:4,yards:378,rank:5},
+        {h:13,par:3,yards:143,rank:15},{h:14,par:4,yards:419,rank:3},{h:15,par:3,yards:125,rank:17},
+        {h:16,par:4,yards:370,rank:13},{h:17,par:3,yards:185,rank:11},{h:18,par:5,yards:550,rank:1},
       ]},
-      { name:'Gold', slope:119, rating:65.8, par:71, holes:[
-        {h:1,par:4,yards:359,rank:10},{h:2,par:3,yards:113,rank:18},{h:3,par:4,yards:318,rank:4},
-        {h:4,par:5,yards:460,rank:2},{h:5,par:4,yards:279,rank:16},{h:6,par:5,yards:400,rank:14},
-        {h:7,par:3,yards:173,rank:8},{h:8,par:4,yards:296,rank:12},{h:9,par:4,yards:330,rank:6},
-        {h:10,par:5,yards:461,rank:7},{h:11,par:4,yards:328,rank:9},{h:12,par:4,yards:349,rank:5},
-        {h:13,par:3,yards:118,rank:15},{h:14,par:4,yards:353,rank:3},{h:15,par:3,yards:102,rank:17},
-        {h:16,par:4,yards:318,rank:11},{h:17,par:4,yards:220,rank:13},{h:18,par:3,yards:152,rank:1},
+      { name:'Gold', slope:119, rating:67.8, par:71, holes:[
+        {h:1,par:4,yards:325,rank:10},{h:2,par:3,yards:135,rank:18},{h:3,par:4,yards:345,rank:4},
+        {h:4,par:5,yards:460,rank:2},{h:5,par:4,yards:302,rank:16},{h:6,par:5,yards:434,rank:14},
+        {h:7,par:3,yards:197,rank:8},{h:8,par:4,yards:276,rank:12},{h:9,par:4,yards:364,rank:6},
+        {h:10,par:5,yards:447,rank:7},{h:11,par:4,yards:343,rank:9},{h:12,par:4,yards:360,rank:5},
+        {h:13,par:3,yards:118,rank:15},{h:14,par:4,yards:400,rank:3},{h:15,par:3,yards:112,rank:17},
+        {h:16,par:4,yards:313,rank:13},{h:17,par:3,yards:165,rank:11},{h:18,par:5,yards:505,rank:1},
       ]},
     ]
   },
   {
     id:'disney_magnolia', name:"Disney's Magnolia Golf Course", location:'Lake Buena Vista, FL',
     tees:[
-      { name:'Green', slope:137, rating:74.0, par:71, holes:[
-        {h:1,par:4,yards:424,rank:3},{h:2,par:4,yards:351,rank:15},{h:3,par:3,yards:161,rank:17},
-        {h:4,par:5,yards:535,rank:11},{h:5,par:4,yards:446,rank:1},{h:6,par:3,yards:202,rank:13},
-        {h:7,par:4,yards:410,rank:7},{h:8,par:5,yards:605,rank:9},{h:9,par:4,yards:426,rank:5},
-        {h:10,par:5,yards:522,rank:8},{h:11,par:4,yards:382,rank:14},{h:12,par:3,yards:163,rank:16},
-        {h:13,par:4,yards:374,rank:18},{h:14,par:4,yards:480,rank:4},{h:15,par:5,yards:565,rank:10},
-        {h:16,par:3,yards:94,rank:12},{h:17,par:3,yards:85,rank:2},{h:18,par:4,yards:360,rank:6},
+      { name:'Classic', slope:141, rating:76.0, par:72, holes:[
+        {h:1,par:4,yards:428,rank:3},{h:2,par:4,yards:417,rank:15},{h:3,par:3,yards:170,rank:17},
+        {h:4,par:5,yards:542,rank:11},{h:5,par:4,yards:492,rank:1},{h:6,par:3,yards:231,rank:13},
+        {h:7,par:4,yards:422,rank:7},{h:8,par:5,yards:614,rank:9},{h:9,par:4,yards:500,rank:5},
+        {h:10,par:5,yards:526,rank:8},{h:11,par:4,yards:399,rank:14},{h:12,par:3,yards:169,rank:16},
+        {h:13,par:4,yards:384,rank:18},{h:14,par:5,yards:592,rank:4},{h:15,par:3,yards:203,rank:10},
+        {h:16,par:4,yards:450,rank:12},{h:17,par:4,yards:485,rank:2},{h:18,par:4,yards:492,rank:6},
       ]},
-      { name:'Blue', slope:131, rating:72.1, par:71, holes:[
-        {h:1,par:4,yards:418,rank:3},{h:2,par:4,yards:417,rank:15},{h:3,par:3,yards:170,rank:17},
-        {h:4,par:5,yards:542,rank:11},{h:5,par:4,yards:488,rank:1},{h:6,par:3,yards:202,rank:13},
-        {h:7,par:4,yards:406,rank:7},{h:8,par:5,yards:610,rank:9},{h:9,par:4,yards:500,rank:5},
-        {h:10,par:5,yards:526,rank:8},{h:11,par:4,yards:384,rank:14},{h:12,par:3,yards:169,rank:16},
-        {h:13,par:4,yards:384,rank:18},{h:14,par:4,yards:455,rank:4},{h:15,par:5,yards:565,rank:10},
-        {h:16,par:3,yards:114,rank:12},{h:17,par:3,yards:347,rank:2},{h:18,par:4,yards:360,rank:6},
+      { name:'Blue', slope:137, rating:74.0, par:72, holes:[
+        {h:1,par:4,yards:428,rank:3},{h:2,par:4,yards:417,rank:15},{h:3,par:3,yards:165,rank:17},
+        {h:4,par:5,yards:542,rank:11},{h:5,par:4,yards:448,rank:1},{h:6,par:3,yards:195,rank:13},
+        {h:7,par:4,yards:410,rank:7},{h:8,par:5,yards:614,rank:9},{h:9,par:4,yards:431,rank:5},
+        {h:10,par:5,yards:526,rank:8},{h:11,par:4,yards:385,rank:14},{h:12,par:3,yards:169,rank:16},
+        {h:13,par:4,yards:375,rank:18},{h:14,par:5,yards:592,rank:4},{h:15,par:3,yards:203,rank:10},
+        {h:16,par:4,yards:400,rank:12},{h:17,par:4,yards:427,rank:2},{h:18,par:4,yards:455,rank:6},
       ]},
-      { name:'White', slope:124, rating:69.6, par:71, holes:[
-        {h:1,par:4,yards:313,rank:3},{h:2,par:4,yards:323,rank:15},{h:3,par:3,yards:147,rank:17},
+      { name:'White', slope:130, rating:71.6, par:72, holes:[
+        {h:1,par:4,yards:410,rank:3},{h:2,par:4,yards:323,rank:15},{h:3,par:3,yards:147,rank:17},
         {h:4,par:5,yards:495,rank:11},{h:5,par:4,yards:432,rank:1},{h:6,par:3,yards:175,rank:13},
-        {h:7,par:4,yards:396,rank:7},{h:8,par:5,yards:550,rank:9},{h:9,par:4,yards:435,rank:5},
-        {h:10,par:5,yards:500,rank:8},{h:11,par:4,yards:328,rank:14},{h:12,par:3,yards:143,rank:16},
-        {h:13,par:4,yards:372,rank:18},{h:14,par:4,yards:400,rank:4},{h:15,par:5,yards:515,rank:10},
-        {h:16,par:3,yards:91,rank:12},{h:17,par:3,yards:85,rank:2},{h:18,par:4,yards:342,rank:6},
+        {h:7,par:4,yards:396,rank:7},{h:8,par:5,yards:550,rank:9},{h:9,par:4,yards:412,rank:5},
+        {h:10,par:5,yards:515,rank:8},{h:11,par:4,yards:371,rank:14},{h:12,par:3,yards:160,rank:16},
+        {h:13,par:4,yards:328,rank:18},{h:14,par:5,yards:523,rank:4},{h:15,par:3,yards:191,rank:10},
+        {h:16,par:4,yards:372,rank:12},{h:17,par:4,yards:400,rank:2},{h:18,par:4,yards:442,rank:6},
       ]},
-      { name:'Gold', slope:117, rating:67.3, par:71, holes:[
-        {h:1,par:4,yards:288,rank:3},{h:2,par:4,yards:296,rank:15},{h:3,par:3,yards:132,rank:17},
-        {h:4,par:5,yards:460,rank:11},{h:5,par:4,yards:398,rank:1},{h:6,par:3,yards:155,rank:13},
-        {h:7,par:4,yards:347,rank:7},{h:8,par:5,yards:500,rank:9},{h:9,par:4,yards:390,rank:5},
-        {h:10,par:5,yards:452,rank:8},{h:11,par:4,yards:300,rank:14},{h:12,par:3,yards:118,rank:16},
-        {h:13,par:4,yards:319,rank:18},{h:14,par:4,yards:350,rank:4},{h:15,par:5,yards:455,rank:10},
-        {h:16,par:3,yards:78,rank:12},{h:17,par:3,yards:75,rank:2},{h:18,par:4,yards:297,rank:6},
+      { name:'Gold', slope:121, rating:69.0, par:72, holes:[
+        {h:1,par:4,yards:365,rank:3},{h:2,par:4,yards:310,rank:15},{h:3,par:3,yards:134,rank:17},
+        {h:4,par:5,yards:477,rank:11},{h:5,par:4,yards:356,rank:1},{h:6,par:3,yards:114,rank:13},
+        {h:7,par:4,yards:347,rank:7},{h:8,par:5,yards:517,rank:9},{h:9,par:4,yards:335,rank:5},
+        {h:10,par:5,yards:504,rank:8},{h:11,par:4,yards:317,rank:14},{h:12,par:3,yards:151,rank:16},
+        {h:13,par:4,yards:311,rank:18},{h:14,par:5,yards:509,rank:4},{h:15,par:3,yards:178,rank:10},
+        {h:16,par:4,yards:343,rank:12},{h:17,par:4,yards:394,rank:2},{h:18,par:4,yards:429,rank:6},
       ]},
-      { name:'Red', slope:117, rating:70.1, par:72, holes:[
-        {h:1,par:4,yards:285,rank:3},{h:2,par:4,yards:271,rank:15},{h:3,par:3,yards:109,rank:17},
-        {h:4,par:5,yards:430,rank:11},{h:5,par:5,yards:378,rank:1},{h:6,par:3,yards:131,rank:13},
-        {h:7,par:4,yards:327,rank:7},{h:8,par:5,yards:468,rank:9},{h:9,par:4,yards:355,rank:5},
-        {h:10,par:5,yards:434,rank:8},{h:11,par:4,yards:271,rank:14},{h:12,par:3,yards:100,rank:16},
-        {h:13,par:4,yards:293,rank:18},{h:14,par:4,yards:320,rank:4},{h:15,par:5,yards:422,rank:10},
-        {h:16,par:3,yards:69,rank:12},{h:17,par:3,yards:63,rank:2},{h:18,par:4,yards:267,rank:6},
+      { name:'Red', slope:126, rating:69.6, par:72, holes:[
+        {h:1,par:4,yards:325,rank:7},{h:2,par:4,yards:221,rank:13},{h:3,par:3,yards:122,rank:17},
+        {h:4,par:5,yards:381,rank:11},{h:5,par:4,yards:348,rank:3},{h:6,par:3,yards:108,rank:15},
+        {h:7,par:4,yards:305,rank:1},{h:8,par:5,yards:408,rank:9},{h:9,par:4,yards:325,rank:5},
+        {h:10,par:5,yards:430,rank:18},{h:11,par:4,yards:309,rank:2},{h:12,par:3,yards:141,rank:10},
+        {h:13,par:4,yards:293,rank:12},{h:14,par:5,yards:417,rank:16},{h:15,par:3,yards:129,rank:14},
+        {h:16,par:4,yards:295,rank:8},{h:17,par:4,yards:320,rank:4},{h:18,par:4,yards:355,rank:6},
       ]},
     ]
   },
@@ -342,10 +342,25 @@ export default function GolfScoringApp() {
   // ── Create / Join ────────────────────────────────────────────────────────────
   const createTournament = async () => {
     const id=genCode(6), pc=genCode(4), adminPc=genCode(4);
+    const players: Player[] = [
+      {id:'p1',name:'Ryan', handicapIndex:10,stats:{matchesPlayed:0,matchesWon:0,holesWon:0,skinsWon:0}},
+      {id:'p2',name:'Doby', handicapIndex:11,stats:{matchesPlayed:0,matchesWon:0,holesWon:0,skinsWon:0}},
+      {id:'p3',name:'Stevie',handicapIndex:22,stats:{matchesPlayed:0,matchesWon:0,holesWon:0,skinsWon:0}},
+      {id:'p4',name:'Erm',  handicapIndex:24,stats:{matchesPlayed:0,matchesWon:0,holesWon:0,skinsWon:0}},
+      {id:'p5',name:'Gibbs',handicapIndex:17,stats:{matchesPlayed:0,matchesWon:0,holesWon:0,skinsWon:0}},
+      {id:'p6',name:'Dief', handicapIndex:18,stats:{matchesPlayed:0,matchesWon:0,holesWon:0,skinsWon:0}},
+      {id:'p7',name:'Kev',  handicapIndex:21,stats:{matchesPlayed:0,matchesWon:0,holesWon:0,skinsWon:0}},
+      {id:'p8',name:'Geoff',handicapIndex:28,stats:{matchesPlayed:0,matchesWon:0,holesWon:0,skinsWon:0}},
+    ];
     const data: Tournament = {
-      id, name:'Golf Trip '+new Date().getFullYear(), passcode:pc, adminPasscode:adminPc,
+      id, name:'Warrior Cup '+new Date().getFullYear(), passcode:pc, adminPasscode:adminPc,
       courses:PRESET_COURSES, activeCourseId:'hawks_landing', activeTeeId:'Black',
-      teamNames:{team1:'Team 1',team2:'Team 2'}, players:[], teams:{team1:[],team2:[]},
+      teamNames:{team1:'Team 1',team2:'Team 2'},
+      players,
+      teams:{
+        team2:['p1','p2','p3','p4'], // Ryan, Doby, Stevie, Erm
+        team1:['p5','p6','p7','p8'], // Gibbs, Dief, Kev, Geoff
+      },
       matches:[], matchResults:[], createdAt:new Date().toISOString(),
     };
     await saveTournament(data, id);
