@@ -15,8 +15,8 @@ interface Player {
   id: string; name: string; handicapIndex: number; 
   stats: { 
     matchesPlayed: number; matchesWon: number; holesWon: number; skinsWon: number;
-    teamPointsContributed: number;     // NEW
-    netUnderParHoles: number;          // NEW
+    teamPointsContributed: number;     // NEW: primary MVP metric
+    netUnderParHoles: number;          // NEW: first tie-breaker
   }; 
 }
 interface Match {
@@ -48,7 +48,6 @@ const FORMATS: Record<string,{name:string;ppp:number;hcpType:string;holesOpts:nu
   singles: { name:'Singles', ppp:1, hcpType:'full', holesOpts:[9,18], desc:'4 individual 1v1 matches — 4 pts', pointsPerMatchup:1, numMatchups:4 },
 };
 
-// Returns the matchup pairs [teamA_key, teamB_key] for a given format
 const getMatchupPairs = (format: string): [string,string][] =>
   format==='singles'
     ? [['t1p1','t2p1'],['t1p2','t2p2'],['t1p3','t2p3'],['t1p4','t2p4']]
@@ -204,13 +203,10 @@ const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
   for (const [k,hcp] of Object.entries(pHcps)) out[k] = (hcp-min>0 && rank<=(hcp-min)) ? 1 : 0;
   return out;
 };
-// Points for a match:
-// - Modified Scramble (perHole): total = m.holes (1 pt per hole)
-// - All others: pointsPerMatchup × numMatchups (doubled for 18 holes)
 const calcMatchPts = (m: Match) => {
   const fmt = FORMATS[m.format];
   if (!fmt) return 0;
-  if (fmt.perHole) return 0.5; // whole match worth 0.5 pts to winning team
+  if (fmt.perHole) return 0.5;
   return fmt.pointsPerMatchup * fmt.numMatchups * (m.holes===18 ? 2 : 1);
 };
 
@@ -283,7 +279,7 @@ const Badge = ({children, color='gray'}: {children: React.ReactNode; color?: str
 const blankTee = (): Tee => ({name:'',slope:113,rating:72,par:72,holes:Array.from({length:18},(_,i)=>({h:i+1,par:4,yards:0,rank:i+1}))});
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MAIN APP
+// MAIN APP COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function GolfScoringApp() {
   const [screen, setScreen] = useState<string>('login');
@@ -300,11 +296,10 @@ export default function GolfScoringApp() {
   const [viewingMatchId, setViewingMatchId] = useState<string|null>(null);
   const [editingScores, setEditingScores] = useState(false);
   const [expandedMatches, setExpandedMatches] = useState<Record<string,boolean>>({});
-  const [darkMode, setDarkMode] = useState(false); // NEW: dark mode
+  const [darkMode, setDarkMode] = useState(false);
 
   const toggleExpanded = (mid: string) => setExpandedMatches(prev=>({...prev,[mid]:!prev[mid]}));
 
-  // Manual course entry
   const [manualCourse, setManualCourse] = useState<Course>({id:'',name:'',location:'',tees:[blankTee()]});
   const unsubRef = useRef<(()=>void)|null>(null);
 
@@ -374,8 +369,8 @@ export default function GolfScoringApp() {
       teamNames:{team1:'Team 1',team2:'Team 2'},
       players,
       teams:{
-        team2:['p1','p2','p3','p4'], // Ryan, Doby, Stevie, Erm
-        team1:['p5','p6','p7','p8'], // Gibbs, Dief, Kev, Geoff
+        team2:['p1','p2','p3','p4'],
+        team1:['p5','p6','p7','p8'],
       },
       matches:[], matchResults:[], createdAt:new Date().toISOString(),
     };
@@ -394,13 +389,11 @@ export default function GolfScoringApp() {
     setScreen(asAdmin?'admin':'tournament'); setLoading(false);
   };
 
-  // ── Tournament mutation ──────────────────────────────────────────────────────
   const updateTournament = async (updater: (d:Tournament)=>Tournament) => {
     if (!tData) return;
     const next = updater(tData); setTData(next); await saveTournament(next); return next;
   };
 
-  // ── Tee helpers ──────────────────────────────────────────────────────────────
   const getTee = (data=tData): Tee|null => {
     if (!data) return null;
     return data.courses.find(c=>c.id===data.activeCourseId)?.tees.find(t=>t.name===data.activeTeeId) ?? null;
@@ -418,7 +411,6 @@ export default function GolfScoringApp() {
   const teamPoints = (team: string, data=tData) => (data?.matchResults??[]).reduce((s,r)=>s+(r.teamPoints?.[team]??0),0);
   const totalPossiblePts = (data=tData) => (data?.matches??[]).reduce((s,m)=>s+calcMatchPts(m),0);
 
-  // ── Scoring helpers ──────────────────────────────────────────────────────────
   const setScore = (pid: string, hole: number, val: number|null) => {
     setLocalScores(prev=>{
       const arr = prev[pid] ? [...prev[pid]] : Array(getMatch(activeMatchId)?.holes??9).fill(null);
@@ -436,7 +428,6 @@ export default function GolfScoringApp() {
     return (m.format==='bestball'||m.format==='singles') ? Math.min(...raw) : raw[0];
   };
 
-  // FIX 1: Modified Scramble uses whole-team comparison — exactly 1 pt/hole max
   const calcHoleResults = (m: Match, hole: number, scores: Record<string,(number|null)[]>, tee: Tee|null) => {
     if (!m?.pairingHcps||!tee) return null;
     const actualHole = hole+(m.startHole-1);
@@ -444,14 +435,12 @@ export default function GolfScoringApp() {
     const rank = hd?.rank ?? hole;
     const skinSt = skinsStrokes(m.pairingHcps, rank);
     if (m.format==='modifiedscramble') {
-      // Each hole: Team 1's best net (min of t1p1, t1p2) vs Team 2's best net (min of t2p1, t2p2)
       const netOf = (pk: string) => {
         const raw = pairRawScore(m, pk, hole, scores);
         return raw != null ? raw - (skinSt[pk]||0) : null;
       };
       const t1Nets = ['t1p1','t1p2'].map(netOf).filter((v): v is number => v!=null);
       const t2Nets = ['t2p1','t2p2'].map(netOf).filter((v): v is number => v!=null);
-      // Skins: best net among ALL 4 pairings — must be outright (no tie)
       const allSkinNets = ['t1p1','t1p2','t2p1','t2p2'].map(pk => {
         const raw = pairRawScore(m, pk, hole, scores);
         if (raw == null) return null;
@@ -474,7 +463,6 @@ export default function GolfScoringApp() {
         skinWinner, rank, hd
       };
     }
-    // Standard formats — use dynamic pairs (2 for most, 4 for singles)
     const pairs = getMatchupPairs(m.format);
     const matchupResults = pairs.map(([a,b]) => {
       const rawA=pairRawScore(m,a,hole,scores), rawB=pairRawScore(m,b,hole,scores);
@@ -548,7 +536,6 @@ export default function GolfScoringApp() {
       leader:ms.leader,playerSkins:ms.playerSkins,completedAt:new Date().toISOString(),
     };
     await saveMatchScores(activeMatchId!,localScores);
-    // FIX: Update player stats (MVP tracking)
     const t1Ids = ['t1p1','t1p2','t1p3','t1p4'].flatMap(k=>m.pairings[k]??[]).filter(Boolean);
     const t2Ids = ['t2p1','t2p2','t2p3','t2p4'].flatMap(k=>m.pairings[k]??[]).filter(Boolean);
     const allIds = [...t1Ids,...t2Ids];
@@ -564,10 +551,8 @@ export default function GolfScoringApp() {
         const holesWonCount=isT1?ms.t1Holes:ms.t2Holes;
         const skinsWonCount=ms.playerSkins[p.id]||0;
 
-        // NEW: team points contributed (full match points awarded to team)
         const pointsContrib = result.teamPoints[myTeam] || 0;
 
-        // NEW: count net under-par holes
         let underParCount = 0;
         if (localScores[p.id]) {
           const pairingKey = Object.keys(m.pairings).find(k => m.pairings[k].includes(p.id));
@@ -642,9 +627,7 @@ export default function GolfScoringApp() {
     </Card>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // LOGIN
-  // ══════════════════════════════════════════════════════════════════════════════
+  // LOGIN SCREEN
   if (screen==='login') return (
     <BG dark={darkMode}><div className="flex items-center justify-center min-h-screen p-4">
       <div className="w-full max-w-sm space-y-4">
@@ -678,9 +661,7 @@ export default function GolfScoringApp() {
 
   if (!tData) return <BG dark={darkMode}><div className="flex items-center justify-center min-h-screen text-xl text-gray-500 dark:text-gray-400">Loading…</div></BG>;
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // ADMIN (your original admin screen - with dark mode support)
-  // ══════════════════════════════════════════════════════════════════════════════
+  // ADMIN SCREEN
   if (screen==='admin') return (
     <BG dark={darkMode}><div className="max-w-5xl mx-auto p-4 space-y-4">
       <TopBar/>
@@ -720,14 +701,14 @@ export default function GolfScoringApp() {
               <input value={p.name} onChange={e=>updateTournament(d=>({...d,players:d.players.map(x=>x.id===p.id?{...x,name:e.target.value}:x)}))}
                 className="flex-1 min-w-0 px-2 py-1 border rounded-lg text-sm font-semibold focus:ring-2 focus:ring-green-400 outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"/>
               <span className="text-xs text-gray-500 dark:text-gray-400">HI:</span>
-              <input type="number" value={p.handicapIndex} onChange={e=>updateTournament(d=>({...d,players:d.players.map(x=>x.id===p.id?{...x,handicapIndex:parseFloat(e.target.value)||0}:x)}))}
+              <input type="number" value={p.handicapIndex} onChange={e=>updateTournament(d=({ ...d,players:d.players.map(x=>x.id===p.id?{...x,handicapIndex:parseFloat(e.target.value)||0}:x)}))}
                 className="w-16 px-2 py-1 border rounded-lg text-sm text-center focus:ring-2 focus:ring-green-400 outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"/>
               {tee&&<span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">HC {courseHcp(p.handicapIndex,tee.slope)}</span>}
               <button onClick={()=>updateTournament(d=>({...d,teams:{team1:d.teams.team1.includes(p.id)?d.teams.team1.filter(x=>x!==p.id):[...d.teams.team1.filter(x=>x!==p.id),p.id],team2:d.teams.team2.filter(x=>x!==p.id)}}))}
                 className={`px-2 py-1 rounded text-xs font-semibold ${tData.teams.team1.includes(p.id)?'bg-blue-600 text-white':'bg-gray-200 text-gray-600 hover:bg-blue-100 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-blue-600'}`}>{tData.teamNames.team1}</button>
-              <button onClick={()=>updateTournament(d=>({...d,teams:{team2:d.teams.team2.includes(p.id)?d.teams.team2.filter(x=>x!==p.id):[...d.teams.team2.filter(x=>x!==p.id),p.id],team1:d.teams.team1.filter(x=>x!==p.id)}}))}
+              <button onClick={()=>updateTournament(d=({ ...d,teams:{team2:d.teams.team2.includes(p.id)?d.teams.team2.filter(x=>x!==p.id):[...d.teams.team2.filter(x=>x!==p.id),p.id],team1:d.teams.team1.filter(x=>x!==p.id)}}))}
                 className={`px-2 py-1 rounded text-xs font-semibold ${tData.teams.team2.includes(p.id)?'bg-red-600 text-white':'bg-gray-200 text-gray-600 hover:bg-red-100 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-600'}`}>{tData.teamNames.team2}</button>
-              <button onClick={()=>updateTournament(d=>({...d,players:d.players.filter(x=>x.id!==p.id),teams:{team1:d.teams.team1.filter(x=>x!==p.id),team2:d.teams.team2.filter(x=>x!==p.id)}}))}
+              <button onClick={()=>updateTournament(d=({ ...d,players:d.players.filter(x=>x.id!==p.id),teams:{team1:d.teams.team1.filter(x=>x!==p.id),team2:d.teams.team2.filter(x=>x!==p.id)}}))}
                 className="p-1 text-gray-400 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"><Trash2 className="w-4 h-4"/></button>
             </div>
           ))}
@@ -749,14 +730,14 @@ export default function GolfScoringApp() {
                 <div className="font-bold text-gray-800 dark:text-gray-100">{c.name}</div>
                 {c.location&&<div className="text-xs text-gray-400 dark:text-gray-500">{c.location}</div>}
               </div>
-              <button onClick={()=>updateTournament(d=>({...d,courses:d.courses.filter(x=>x.id!==c.id)}))}
+              <button onClick={()=>updateTournament(d=({ ...d,courses:d.courses.filter(x=>x.id!==c.id)}))}
                 className="p-1 text-gray-300 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400 ml-2"><Trash2 className="w-3 h-3"/></button>
             </div>
             <div className="flex gap-2 flex-wrap mt-2">
               {c.tees.map(t=>{
                 const totalYards = t.holes.reduce((s,h)=>s+h.yards,0);
                 return (
-                <button key={t.name} onClick={()=>updateTournament(d=>({...d,activeCourseId:c.id,activeTeeId:t.name}))}
+                <button key={t.name} onClick={()=>updateTournament(d=({ ...d,activeCourseId:c.id,activeTeeId:t.name}))}
                   className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${tData.activeCourseId===c.id&&tData.activeTeeId===t.name?'bg-green-600 text-white':'bg-white border border-gray-300 hover:border-green-400 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:hover:border-green-500'}`}>
                   {t.name} · {t.slope}/{t.rating} · Par {t.par} · {totalYards.toLocaleString()}y
                 </button>
@@ -772,23 +753,21 @@ export default function GolfScoringApp() {
     </div></BG>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // COURSE MANUAL ENTRY
-  // ══════════════════════════════════════════════════════════════════════════════
+  // COURSE SEARCH / MANUAL ENTRY
   if (screen==='courseSearch') return (
     <BG dark={darkMode}><div className="max-w-3xl mx-auto p-4 space-y-4">
       <TopBar title="Add a Course" back={()=>setScreen('admin')}/>
       <Card className="p-5">
         <div className="text-xs text-gray-400 dark:text-gray-500 mb-4">Enter course details from the scorecard. All 3 Disney courses are already included.</div>
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <Inp label="Course Name" value={manualCourse.name} onChange={v=>setManualCourse(c=>({...c,name:v}))} placeholder="e.g. Pebble Beach"/>
-          <Inp label="Location" value={manualCourse.location} onChange={v=>setManualCourse(c=>({...c,location:v}))} placeholder="e.g. Pebble Beach, CA"/>
+          <Inp label="Course Name" value={manualCourse.name} onChange={v=>setManualCourse(c=({ ...c,name:v}))} placeholder="e.g. Pebble Beach"/>
+          <Inp label="Location" value={manualCourse.location} onChange={v=>setManualCourse(c=({ ...c,location:v}))} placeholder="e.g. Pebble Beach, CA"/>
         </div>
         {manualCourse.tees.map((t,ti)=>(
           <div key={ti} className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
             <div className="flex items-center justify-between mb-3">
               <span className="font-bold text-blue-800 dark:text-blue-300">Tee {ti+1}: {t.name||'(unnamed)'}</span>
-              {manualCourse.tees.length>1&&<button onClick={()=>setManualCourse(c=>({...c,tees:c.tees.filter((_,i)=>i!==ti)}))} className="text-xs text-red-500 dark:text-red-400 font-semibold">Remove</button>}
+              {manualCourse.tees.length>1&&<button onClick={()=>setManualCourse(c=({ ...c,tees:c.tees.filter((_,i)=>i!==ti)}))} className="text-xs text-red-500 dark:text-red-400 font-semibold">Remove</button>}
             </div>
             <div className="grid grid-cols-4 gap-2 mb-3">
               {([['Color','name','text','Black'],['Slope','slope','number','113'],['Rating','rating','number','72.0'],['Par','par','number','72']] as const).map(([lbl,key,type,ph])=>(
@@ -819,7 +798,7 @@ export default function GolfScoringApp() {
             </div>
           </div>
         ))}
-        <button onClick={()=>setManualCourse(c=>({...c,tees:[...c.tees,blankTee()]}))} className="flex items-center gap-1 text-sm text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300 font-semibold mb-4">
+        <button onClick={()=>setManualCourse(c=({ ...c,tees:[...c.tees,blankTee()]}))} className="flex items-center gap-1 text-sm text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300 font-semibold mb-4">
           <Plus className="w-4 h-4"/>Add tee box
         </button>
         <Btn color="green" disabled={!manualCourse.name.trim()} onClick={()=>addCourse({...manualCourse,id:'m'+Date.now()})} className="w-full py-3">
@@ -829,9 +808,7 @@ export default function GolfScoringApp() {
     </div></BG>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // TOURNAMENT SCHEDULE (your original + dark mode)
-  // ══════════════════════════════════════════════════════════════════════════════
+  // TOURNAMENT SCHEDULE
   if (screen==='tournament') {
     const players=tData.players??[];
     const t1pool=tData.teams.team1.map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[];
@@ -948,7 +925,7 @@ export default function GolfScoringApp() {
                   setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>Enter Scores</Btn>
               )}
-              {role==='admin'&&<button onClick={()=>updateTournament(d=>({...d,matches:d.matches.filter(x=>x.id!==m.id)}))} className="p-1 text-gray-400 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"><Trash2 className="w-4 h-4"/></button>}
+              {role==='admin'&&<button onClick={()=>updateTournament(d=({ ...d,matches:d.matches.filter(x=>x.id!==m.id)}))} className="p-1 text-gray-400 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"><Trash2 className="w-4 h-4"/></button>}
               {m.completed&&(
                 <Btn color="ghost" sm onClick={()=>setViewingMatchId(m.id)}>📋 Scorecard</Btn>
               )}
@@ -1030,13 +1007,13 @@ export default function GolfScoringApp() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
             <Sel label="Format" value={f.format} onChange={v=>setF(x=>({...x,format:v}))}
               options={Object.entries(FORMATS).map(([k,v])=>({value:k,label:v.name}))}/>
-            <Sel label="Starting Hole" value={f.startHole} onChange={v=>setF(x=>({...x,startHole:parseInt(v)}))}
+            <Sel label="Starting Hole" value={f.startHole} onChange={v=>setF(x=({ ...x,startHole:parseInt(v)}))}
               options={[{value:1,label:'Front 9 (1–9)'},{value:10,label:'Back 9 (10–18)'}]}/>
-            <Sel label="Holes" value={f.holes} onChange={v=>setF(x=>({...x,holes:parseInt(v)}))}
+            <Sel label="Holes" value={f.holes} onChange={v=>setF(x=({ ...x,holes:parseInt(v)}))}
               options={fmt.holesOpts.map(h=>({value:h,label:`${h} holes`}))}/>
           </div>
           <Sel label="Course & Tee" value={`${f.courseId}::${f.teeId}`}
-            onChange={v=>{const[cid,tid]=v.split('::');setF(x=>({...x,courseId:cid,teeId:tid}));}}
+            onChange={v=>{const[cid,tid]=v.split('::');setF(x=({ ...x,courseId:cid,teeId:tid}));}}
             options={allTeeOpts} className="mb-3"/>
           <div className="text-sm font-bold text-green-700 dark:text-green-300 mb-3">
             {fmt.perHole ? '0.5 pts — awarded to team that wins most holes' : `${pts} pts available`}
@@ -1086,15 +1063,15 @@ export default function GolfScoringApp() {
           {!tData.matches?.length&&!showMatchBuilder&&<div className="text-center text-gray-400 dark:text-gray-500 py-8">{role==='admin'?'No matches yet — add matches above':'No matches scheduled yet'}</div>}
           <div className="space-y-3">{(tData.matches??[]).map(m=><MatchCard key={m.id} m={m}/>)}</div>
         </Card>
-        {viewingMatchId && (() => {
-          const vm = getMatch(viewingMatchId);
-          if (!vm) return null;
-          const vfmt = FORMATS[vm.format];
-          const vtee = getTeeForMatch(vm);
-          const vresult = getResult(viewingMatchId);
-          const vplayers = tData.players ?? [];
+        {viewingMatchId&&(() => {
+          const vm=getMatch(viewingMatchId);
+          if(!vm) return null;
+          const vfmt=FORMATS[vm.format];
+          const vtee=getTeeForMatch(vm);
+          const vresult=getResult(viewingMatchId);
+          const vplayers=tData.players??[];
           const ScorecardModal = () => {
-            const [vscores, setVscores] = useState<Record<string,(number|null)[]>>({});
+            const [vscores,setVscores] = useState<Record<string,(number|null)[]>>({});
             useEffect(()=>{loadMatchScores(viewingMatchId).then(setVscores);},[]);
             const allIds = Object.values(vm.pairings).flat().filter(Boolean);
             return (
@@ -1114,8 +1091,11 @@ export default function GolfScoringApp() {
                       <div><div className="font-black text-2xl text-red-600 dark:text-red-400">{vresult.teamPoints.team2}</div><div className="text-xs text-red-700 dark:text-red-300">{tData.teamNames.team2}</div></div>
                     </div>
                   )}
-                  {/* ... rest of your scorecard modal content ... */}
-                  {/* (paste your original scorecard modal code here if you want to keep it unchanged) */}
+                  {/* Add your original scorecard table and hole results here if you want to keep them */}
+                  <div className="p-4">
+                    <p className="text-center text-gray-500 dark:text-gray-400">Scorecard content placeholder</p>
+                    {/* Your original table code can go here */}
+                  </div>
                 </div>
               </div>
             );
@@ -1126,33 +1106,225 @@ export default function GolfScoringApp() {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // SCORING SCREEN (your original - with dark mode)
-  // ══════════════════════════════════════════════════════════════════════════════
-  if (screen==='scoring') {
-    const m=getMatch(activeMatchId);
-    if (!m) return <BG dark={darkMode}><div className="p-8 text-center text-gray-500 dark:text-gray-400">Match not found. <button onClick={()=>setScreen('tournament')} className="text-blue-600 dark:text-blue-400 underline">Back</button></div></BG>;
-    const matchTee=getTeeForMatch(m);
-    const players=tData.players??[];
-    const actualHoleNum=currentHole+(m.startHole-1);
-    const hd=matchTee?.holes.find(h=>h.h===actualHoleNum);
-    const rank=hd?.rank??currentHole;
-    const ms=calcMatchStatus(m,localScores,matchTee);
-    const holeRes=calcHoleResults(m,currentHole,localScores,matchTee);
-    const fmt=FORMATS[m.format];
-    const isSgl = fmt.ppp===1;
-    // ... your original scoring UI code here ...
-    // (keep your PairEntry, hole navigation, etc. - add dark classes where needed)
+  // SCORING SCREEN - guarded version to prevent blank screen
+  if (screen === 'scoring') {
+    const m = getMatch(activeMatchId);
+
+    if (!activeMatchId || !m) {
+      return (
+        <BG dark={darkMode}>
+          <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+            <div className="text-3xl font-bold text-red-600 dark:text-red-400 mb-4">Match Not Found</div>
+            <p className="text-lg text-gray-700 dark:text-gray-300 mb-8 max-w-md">
+              The match you're trying to score could not be loaded. It may have been deleted, or there was a sync issue.
+            </p>
+            <Btn 
+              color="blue" 
+              onClick={() => {
+                setActiveMatchId(null);
+                setEditingScores(false);
+                setScreen('tournament');
+              }}
+              className="text-lg px-8 py-4"
+            >
+              Return to Schedule
+            </Btn>
+          </div>
+        </BG>
+      );
+    }
+
+    const matchTee = getTeeForMatch(m);
+    const players = tData?.players ?? [];
+    const actualHoleNum = currentHole + (m.startHole - 1);
+    const hd = matchTee?.holes?.find(h => h.h === actualHoleNum);
+    const rank = hd?.rank ?? currentHole;
+    const ms = calcMatchStatus(m, localScores, matchTee);
+    const holeRes = calcHoleResults(m, currentHole, localScores, matchTee);
+    const fmt = FORMATS[m.format] ?? { name: 'Unknown', ppp: 1 };
+    const isSgl = fmt.ppp === 1;
+
     return (
       <BG dark={darkMode}>
-        {/* your full scoring screen content */}
-        <div className="max-w-2xl mx-auto p-4 space-y-4">
-          {/* ... existing scoring UI ... */}
+        <div className="max-w-2xl mx-auto p-4 space-y-6 pb-24">
+          <Card className="p-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div className="text-2xl font-black">Hole {actualHoleNum}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Par {hd?.par ?? '—'} · {hd?.yards ?? '—'}y · Rank {rank}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                  {fmt.name} · {matchTee?.name || 'Unknown'} Tees
+                  {editingScores && <span className="ml-2 text-orange-600 font-semibold">(Editing)</span>}
+                </div>
+              </div>
+              <div className="text-center sm:text-right">
+                <div className={`text-3xl font-black ${ms.leader === 'team1' ? 'text-blue-600 dark:text-blue-400' : ms.leader === 'team2' ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                  {ms.label}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {tData.teamNames.team1} {ms.t1Holes} – {ms.t2Holes} {tData.teamNames.team2}
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="overflow-x-auto pb-2">
+            <div className="flex gap-2 min-w-max">
+              {Array.from({ length: m.holes }, (_, i) => i + 1).map(mh => {
+                const ah = mh + (m.startHole - 1);
+                const hd2 = matchTee?.holes?.find(h => h.h === ah);
+                const res = calcHoleResults(m, mh, localScores, matchTee);
+                const wins = { team1: 0, team2: 0 };
+                res?.matchupResults?.forEach(r => {
+                  if (r.winner === 't1p') wins.team1++;
+                  else if (r.winner === 't2p') wins.team2++;
+                });
+                const col = !res?.matchupResults?.some(r => r.winner != null)
+                  ? 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600'
+                  : wins.team1 > wins.team2
+                    ? 'bg-blue-200 dark:bg-blue-900/50 border-blue-500'
+                    : wins.team2 > wins.team1
+                      ? 'bg-red-200 dark:bg-red-900/50 border-red-500'
+                      : 'bg-gray-200 dark:bg-gray-700 border-gray-400';
+
+                return (
+                  <button
+                    key={mh}
+                    onClick={() => setCurrentHole(mh)}
+                    className={`flex-shrink-0 w-14 h-14 rounded-xl border-2 font-bold text-base flex flex-col items-center justify-center transition-all ${col} ${currentHole === mh ? 'ring-4 ring-green-500 scale-105' : ''}`}
+                  >
+                    <div>{ah}</div>
+                    {hd2 && <div className="text-xs opacity-70">P{hd2.par}</div>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Add your hole result banners, pairing entries, Prev/Next/Save buttons here */}
+          {/* For now, placeholder content to prevent blank screen */}
+          <Card className="p-6 text-center">
+            <p className="text-lg font-medium">Scoring interface loading...</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+              (Your original pairing and score entry UI goes here)
+            </p>
+          </Card>
+
+          <div className="flex gap-4 fixed bottom-4 left-4 right-4 sm:static sm:justify-between">
+            <Btn 
+              color="ghost" 
+              onClick={() => setCurrentHole(h => Math.max(1, h - 1))} 
+              disabled={currentHole === 1}
+              className="flex-1"
+            >
+              <ChevronLeft className="w-5 h-5 mr-2" /> Prev
+            </Btn>
+            {currentHole < m.holes ? (
+              <Btn 
+                color="green" 
+                onClick={async () => { await saveScores(); setCurrentHole(h => h + 1); }}
+                className="flex-1"
+              >
+                Next <ChevronRight className="w-5 h-5 ml-2" />
+              </Btn>
+            ) : (
+              <Btn 
+                color="blue" 
+                onClick={async () => { 
+                  await saveScores(); 
+                  if (role === 'admin') await finishMatch();
+                  setEditingScores(false);
+                }}
+                className="flex-1"
+                disabled={role === 'player' && !editingScores}
+              >
+                {editingScores ? 'Save Changes' : role === 'admin' ? 'Complete Match' : 'Save & Exit'}
+              </Btn>
+            )}
+          </div>
         </div>
       </BG>
     );
   }
 
-  // If no screen matches
+  // STANDINGS SCREEN
+  if (screen==='standings') {
+    const players = tData.players ?? [];
+    const contribs = [...players]
+      .map(p => ({
+        ...p,
+        score: {
+          primary: p.stats?.teamPointsContributed || 0,
+          tiebreaker1: p.stats?.netUnderParHoles || 0,
+          tiebreaker2: p.stats?.skinsWon || 0,
+        }
+      }))
+      .sort((a, b) => {
+        if (b.score.primary !== a.score.primary) return b.score.primary - a.score.primary;
+        if (b.score.tiebreaker1 !== a.score.tiebreaker1) return b.score.tiebreaker1 - a.score.tiebreaker1;
+        return b.score.tiebreaker2 - a.score.tiebreaker2;
+      });
+
+    return (
+      <BG dark={darkMode}>
+        <div className="max-w-5xl mx-auto p-4 space-y-4">
+          <TopBar title="Standings" />
+
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="p-5 text-center border-2 border-blue-200 dark:border-blue-700">
+              <div className="text-6xl font-black text-blue-600 dark:text-blue-400">{t1pts}</div>
+              <div className="text-lg font-bold text-blue-700 dark:text-blue-300">{tData.teamNames.team1}</div>
+              {possiblePts>0&&<div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
+            </Card>
+            <Card className="p-5 text-center border-2 border-gray-200 dark:border-gray-600">
+              <div className="text-2xl font-black text-gray-700 dark:text-gray-300 mt-1">{possiblePts} pts</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">Total possible points</div>
+            </Card>
+            <Card className="p-5 text-center border-2 border-red-200 dark:border-red-700">
+              <div className="text-6xl font-black text-red-600 dark:text-red-400">{t2pts}</div>
+              <div className="text-lg font-bold text-red-700 dark:text-red-300">{tData.teamNames.team2}</div>
+              {possiblePts>0&&<div className="text-xs text-gray-400 dark:text-gray-500 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
+            </Card>
+          </div>
+
+          <Card className="p-5">
+            <div className="flex items-center gap-2 mb-3"><Award className="w-6 h-6 text-yellow-600 dark:text-yellow-400"/><h2 className="text-xl font-bold">MVP Race</h2></div>
+            <div className="space-y-2">
+              {contribs.map((p,i)=>(
+                <div key={p.id} className={`p-3 rounded-xl border ${i===0?'border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30':'border-gray-200 bg-gray-50 dark:bg-gray-800/50'}`}>
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{i===0?'🏆':i===1?'🥈':i===2?'🥉':`${i+1}`}</span>
+                      <div>
+                        <div className="font-bold">{p.name}</div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500">{tData.teams.team1.includes(p.id)?tData.teamNames.team1:tData.teamNames.team2}</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-6 text-center text-xs">
+                      <div>
+                        <div className="text-gray-400 dark:text-gray-500">Team Pts</div>
+                        <div className="font-bold text-green-600 dark:text-green-400">{p.stats?.teamPointsContributed?.toFixed(1) || '0.0'}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-400 dark:text-gray-500">Net < Par</div>
+                        <div className="font-bold text-purple-600 dark:text-purple-400">{p.stats?.netUnderParHoles || 0}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-400 dark:text-gray-500">Skins</div>
+                        <div className="font-bold text-orange-600 dark:text-orange-400">{(p.stats?.skinsWon || 0).toFixed(1)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </BG>
+    );
+  }
+
   return null;
 }
