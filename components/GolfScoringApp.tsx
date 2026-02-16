@@ -428,7 +428,6 @@ export default function GolfScoringApp() {
 
     if (m.format==='modifiedscramble') {
       // Each hole: Team 1's best net (min of t1p1, t1p2) vs Team 2's best net (min of t2p1, t2p2)
-      // Pairings just provide handicap context for net calculation
       const netOf = (pk: string) => {
         const raw = pairRawScore(m, pk, hole, scores);
         return raw != null ? raw - (skinSt[pk]||0) : null;
@@ -436,15 +435,28 @@ export default function GolfScoringApp() {
       const t1Nets = ['t1p1','t1p2'].map(netOf).filter((v): v is number => v!=null);
       const t2Nets = ['t2p1','t2p2'].map(netOf).filter((v): v is number => v!=null);
 
+      // Skins: best net among ALL 4 pairings — must be outright (no tie)
+      const allSkinNets = ['t1p1','t1p2','t2p1','t2p2'].map(pk => {
+        const raw = pairRawScore(m, pk, hole, scores);
+        if (raw == null) return null;
+        return { pk, ids: m.pairings[pk]??[], net: raw - (skinSt[pk]||0) };
+      }).filter(Boolean) as {pk:string;ids:string[];net:number}[];
+      let skinWinner = null;
+      if (allSkinNets.length === 4) {
+        const best = Math.min(...allSkinNets.map(x=>x.net));
+        const winners = allSkinNets.filter(x=>x.net===best);
+        if (winners.length === 1) skinWinner = winners[0];
+      }
+
       if (!t1Nets.length || !t2Nets.length) {
-        return {matchupResults:[{a:'t1',b:'t2',winner:null as string|null,netA:0,netB:0,isTeamResult:true}],skinWinner:null,rank,hd};
+        return {matchupResults:[{a:'t1',b:'t2',winner:null as string|null,netA:0,netB:0,isTeamResult:true}],skinWinner,rank,hd};
       }
       const t1Best = Math.min(...t1Nets);
       const t2Best = Math.min(...t2Nets);
       const winner = t1Best < t2Best ? 't1p' : t2Best < t1Best ? 't2p' : 'tie';
       return {
         matchupResults:[{a:'t1',b:'t2',winner,netA:t1Best,netB:t2Best,isTeamResult:true}],
-        skinWinner:null, rank, hd
+        skinWinner, rank, hd
       };
     }
 
@@ -1294,7 +1306,7 @@ export default function GolfScoringApp() {
                 </div>
               );
             })}
-            {holeRes.skinWinner&&!FORMATS[m.format]?.perHole&&<div className="p-2 rounded-lg text-sm text-center font-semibold bg-yellow-100 text-yellow-800">🏆 Skin → {holeRes.skinWinner.ids.map(id=>players.find(p=>p.id===id)?.name).join(' & ')} · Net {holeRes.skinWinner.net}</div>}
+            {holeRes.skinWinner&&<div className="p-2 rounded-lg text-sm text-center font-semibold bg-yellow-100 text-yellow-800">🏆 Skin → {holeRes.skinWinner.ids.map(id=>players.find(p=>p.id===id)?.name).join(' & ')} · Net {holeRes.skinWinner.net}</div>}
           </div>
         )}
 
