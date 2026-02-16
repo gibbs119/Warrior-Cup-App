@@ -37,7 +37,7 @@ interface Tournament {
 // perHole=true → Modified Scramble: both teams score every hole, best team net
 // wins the hole → exactly 1 pt per hole (0.5 each on tie). No matchup splitting.
 const FORMATS: Record<string,{name:string;ppp:number;hcpType:string;holesOpts:number[];desc:string;pointsPerMatchup:number;numMatchups:number;perHole?:boolean}> = {
-  modifiedscramble: { name:'Modified Scramble', ppp:2, hcpType:'avg75', holesOpts:[9,18], desc:'Best team net wins hole — 1pt/hole max', pointsPerMatchup:1, numMatchups:1, perHole:true },
+  modifiedscramble: { name:'Modified Scramble', ppp:2, hcpType:'avg75', holesOpts:[9,18], desc:'Best net of all 4 pairings wins hole — 0.5pts/hole', pointsPerMatchup:0.5, numMatchups:1, perHole:true },
   bestball:         { name:'Best Ball',          ppp:2, hcpType:'full',  holesOpts:[9,18], desc:'Best individual net score wins',                          pointsPerMatchup:1, numMatchups:2 },
   scramble:         { name:'2-Man Scramble',     ppp:2, hcpType:'avg75', holesOpts:[9,18], desc:'Team picks best shot each time',                          pointsPerMatchup:1, numMatchups:2 },
   alternateshot:    { name:'Alternate Shot',     ppp:2, hcpType:'avg',   holesOpts:[9,18], desc:'Partners alternate shots',                                pointsPerMatchup:1, numMatchups:2 },
@@ -210,7 +210,7 @@ const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
 const calcMatchPts = (m: Match) => {
   const fmt = FORMATS[m.format];
   if (!fmt) return 0;
-  if (fmt.perHole) return m.holes;
+  if (fmt.perHole) return 0.5; // whole match worth 0.5 pts to winning team
   return fmt.pointsPerMatchup * fmt.numMatchups * (m.holes===18 ? 2 : 1);
 };
 
@@ -412,28 +412,25 @@ export default function GolfScoringApp() {
     const skinSt = skinsStrokes(m.pairingHcps, rank);
 
     if (m.format==='modifiedscramble') {
-      // Best net from each TEAM (min of t1p1/t1p2 nets vs min of t2p1/t2p2 nets)
-      const t1Nets = (['t1p1','t1p2'] as const).map(pk=>{
-        const raw=pairRawScore(m,pk,hole,scores);
-        return raw!=null ? raw-(skinSt[pk]||0) : null;
-      }).filter((v): v is number => v!=null);
-      const t2Nets = (['t2p1','t2p2'] as const).map(pk=>{
-        const raw=pairRawScore(m,pk,hole,scores);
-        return raw!=null ? raw-(skinSt[pk]||0) : null;
-      }).filter((v): v is number => v!=null);
+      // Each hole: Team 1's best net (min of t1p1, t1p2) vs Team 2's best net (min of t2p1, t2p2)
+      // Pairings just provide handicap context for net calculation
+      const netOf = (pk: string) => {
+        const raw = pairRawScore(m, pk, hole, scores);
+        return raw != null ? raw - (skinSt[pk]||0) : null;
+      };
+      const t1Nets = ['t1p1','t1p2'].map(netOf).filter((v): v is number => v!=null);
+      const t2Nets = ['t2p1','t2p2'].map(netOf).filter((v): v is number => v!=null);
 
-      if (!t1Nets.length||!t2Nets.length) {
+      if (!t1Nets.length || !t2Nets.length) {
         return {matchupResults:[{a:'t1',b:'t2',winner:null as string|null,netA:0,netB:0,isTeamResult:true}],skinWinner:null,rank,hd};
       }
-      const t1Best=Math.min(...t1Nets), t2Best=Math.min(...t2Nets);
-      const winner = t1Best<t2Best?'t1p':t2Best<t1Best?'t2p':'tie';
-      const skinNets = (['t1p1','t1p2','t2p1','t2p2'] as const).map(pk=>{
-        const raw=pairRawScore(m,pk,hole,scores); if(raw==null) return null;
-        return {pk,ids:m.pairings[pk]??[],net:raw-(skinSt[pk]||0)};
-      }).filter(Boolean) as {pk:string;ids:string[];net:number}[];
-      let skinWinner=null;
-      if(skinNets.length===4){const best=Math.min(...skinNets.map(x=>x.net));const w=skinNets.filter(x=>x.net===best);if(w.length===1)skinWinner=w[0];}
-      return {matchupResults:[{a:'t1',b:'t2',winner,netA:t1Best,netB:t2Best,isTeamResult:true}],skinWinner,rank,hd};
+      const t1Best = Math.min(...t1Nets);
+      const t2Best = Math.min(...t2Nets);
+      const winner = t1Best < t2Best ? 't1p' : t2Best < t1Best ? 't2p' : 'tie';
+      return {
+        matchupResults:[{a:'t1',b:'t2',winner,netA:t1Best,netB:t2Best,isTeamResult:true}],
+        skinWinner:null, rank, hd
+      };
     }
 
     // Standard formats — use dynamic pairs (2 for most, 4 for singles)
@@ -478,14 +475,17 @@ export default function GolfScoringApp() {
     const matchupPts={team1:0,team2:0};
 
     if(fmt.perHole) {
-      // Modified Scramble — 1pt per hole, awarded to winning team only
+      // Modified Scramble: count hole wins per team, winner of the match gets 0.5 pts total
+      let t1Holes=0, t2Holes=0;
       for(let h=1;h<=m.holes;h++){
         const res=calcHoleResults(m,h,localScores,tee);
         const w=res?.matchupResults[0]?.winner;
-        if(w==='t1p') matchupPts.team1+=1;
-        else if(w==='t2p') matchupPts.team2+=1;
-        else if(w==='tie'){matchupPts.team1+=0.5;matchupPts.team2+=0.5;}
+        if(w==='t1p') t1Holes++;
+        else if(w==='t2p') t2Holes++;
       }
+      if(t1Holes>t2Holes) matchupPts.team1=0.5;
+      else if(t2Holes>t1Holes) matchupPts.team2=0.5;
+      else { matchupPts.team1=0.25; matchupPts.team2=0.25; } // halved
     } else {
       // Standard: points awarded per matchup won — supports 2 or 4 pairs (singles)
       const pairs = getMatchupPairs(m.format);
@@ -688,12 +688,15 @@ export default function GolfScoringApp() {
                 className="p-1 text-gray-300 hover:text-red-500 ml-2"><Trash2 className="w-3 h-3"/></button>
             </div>
             <div className="flex gap-2 flex-wrap mt-2">
-              {c.tees.map(t=>(
+              {c.tees.map(t=>{
+                const totalYards = t.holes.reduce((s,h)=>s+h.yards,0);
+                return (
                 <button key={t.name} onClick={()=>updateTournament(d=>({...d,activeCourseId:c.id,activeTeeId:t.name}))}
                   className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${tData.activeCourseId===c.id&&tData.activeTeeId===t.name?'bg-green-600 text-white':'bg-white border border-gray-300 hover:border-green-400'}`}>
-                  {t.name} · {t.slope}/{t.rating} · Par {t.par}
+                  {t.name} · {t.slope}/{t.rating} · Par {t.par} · {totalYards.toLocaleString()}y
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
@@ -772,7 +775,10 @@ export default function GolfScoringApp() {
 
     // FIX 2: Flat list of all tee options across all courses
     const allTeeOpts = (tData.courses??[]).flatMap(c=>
-      c.tees.map(t=>({value:`${c.id}::${t.name}`,label:`${c.name} — ${t.name} (${t.slope}/${t.rating})`}))
+      c.tees.map(t=>{
+        const totalYards = t.holes.reduce((s,h)=>s+h.yards,0);
+        return {value:`${c.id}::${t.name}`,label:`${c.name} — ${t.name} (${t.slope}/${t.rating} · Par ${t.par} · ${totalYards.toLocaleString()}y)`};
+      })
     );
 
     // MatchCard reads expandedMatches from parent — no local useState for expanded
@@ -855,7 +861,7 @@ export default function GolfScoringApp() {
                 <Badge color={m.startHole===1?'blue':'purple'}>{m.startHole===1?'Front 9':'Back 9'}</Badge>
                 <Badge color="gray">{m.holes} holes</Badge>
                 <Badge color="orange">{totalPts} pts</Badge>
-                {fmt.perHole&&<Badge color="green">1pt/hole</Badge>}
+                {fmt.perHole&&<Badge color="green">0.5 pts total</Badge>}
               </div>
               {matchCourseName&&<div className="text-xs text-gray-400 mt-0.5">{matchCourseName} · {matchTee?.name} Tees</div>}
               {result&&(
@@ -982,7 +988,7 @@ export default function GolfScoringApp() {
             onChange={v=>{const[cid,tid]=v.split('::');setF(x=>({...x,courseId:cid,teeId:tid}));}}
             options={allTeeOpts} className="mb-3"/>
           <div className="text-sm font-bold text-green-700 mb-3">
-            {pts} pts {fmt.perHole?'(1 pt per hole)':'available'}
+            {fmt.perHole ? '0.5 pts — awarded to team that wins most holes' : `${pts} pts available`}
           </div>
           <div className="flex gap-2">
             <Btn color="green" onClick={()=>{
@@ -1265,11 +1271,15 @@ export default function GolfScoringApp() {
               const bLabel=isTeam?tData.teamNames.team2:(m.pairings[r.b]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join(' & ');
               return r.winner&&(
                 <div key={i} className={`p-2 rounded-lg text-sm text-center font-semibold ${r.winner==='tie'?'bg-gray-100 text-gray-600':r.winner==='t1p'?'bg-blue-100 text-blue-800':'bg-red-100 text-red-800'}`}>
-                  {r.winner==='tie'?'⚪ Tied':r.winner==='t1p'?`🔵 ${aLabel} wins hole (net ${r.netA})`:`🔴 ${bLabel} wins hole (net ${r.netB})`}
+                  {r.winner==='tie'
+                    ? `⚪ Tied — ${aLabel} net ${r.netA} / ${bLabel} net ${r.netB}`
+                    : r.winner==='t1p'
+                      ? `🔵 ${aLabel} wins hole — net ${r.netA} vs ${r.netB}`
+                      : `🔴 ${bLabel} wins hole — net ${r.netB} vs ${r.netA}`}
                 </div>
               );
             })}
-            {holeRes.skinWinner&&<div className="p-2 rounded-lg text-sm text-center font-semibold bg-yellow-100 text-yellow-800">🏆 Skin → {holeRes.skinWinner.ids.map(id=>players.find(p=>p.id===id)?.name).join(' & ')} · Net {holeRes.skinWinner.net}</div>}
+            {holeRes.skinWinner&&!FORMATS[m.format]?.perHole&&<div className="p-2 rounded-lg text-sm text-center font-semibold bg-yellow-100 text-yellow-800">🏆 Skin → {holeRes.skinWinner.ids.map(id=>players.find(p=>p.id===id)?.name).join(' & ')} · Net {holeRes.skinWinner.net}</div>}
           </div>
         )}
 
