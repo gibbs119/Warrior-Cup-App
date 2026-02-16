@@ -252,9 +252,9 @@ const BG = ({children}: {children: React.ReactNode}) => (
   </div>
 );
 
-const Card = ({children, className='', gold=false}: {children: React.ReactNode; className?: string; gold?: boolean}) => (
+const Card = ({children, className='', gold=false, style}: {children: React.ReactNode; className?: string; gold?: boolean; style?: React.CSSProperties}) => (
   <div className={`rounded-2xl border ${gold ? 'border-yellow-500/40 bg-yellow-950/20' : 'border-white/10 bg-white/5'} backdrop-blur-sm shadow-xl ${className}`}
-    style={gold ? {background:'linear-gradient(135deg,rgba(201,162,39,0.12),rgba(201,162,39,0.05))'} : {background:'rgba(255,255,255,0.05)'}}>
+    style={style ?? (gold ? {background:'linear-gradient(135deg,rgba(201,162,39,0.12),rgba(201,162,39,0.05))'} : {background:'rgba(255,255,255,0.05)'})}>
     {children}
   </div>
 );
