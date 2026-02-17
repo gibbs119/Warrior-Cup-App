@@ -1213,12 +1213,12 @@ export default function GolfScoringApp() {
                 <Badge color="gold">{totalPts}pts</Badge>
                 {m.completed&&<Badge color="green">✓ Done</Badge>}
               </div>
-              {matchCourseName&&<div className="text-xs text-gray-500 mb-1">{matchCourseName} · {matchTee?.name} Tees</div>}
+              {matchCourseName&&<div className="text-xs text-white/30 mb-1">{matchCourseName} · {matchTee?.name} Tees</div>}
               {result&&(
                 <div className="text-sm font-bold">
-                  <span className="text-blue-600">{tData.teamNames.team1}: {result.teamPoints.team1}pt</span>
-                  <span className="text-gray-400 mx-2">|</span>
-                  <span className="text-red-600">{tData.teamNames.team2}: {result.teamPoints.team2}pt</span>
+                  <span className="text-blue-300">{tData.teamNames.team1}: {result.teamPoints.team1}pt</span>
+                  <span className="text-white/20 mx-2">|</span>
+                  <span className="text-red-300">{tData.teamNames.team2}: {result.teamPoints.team2}pt</span>
                 </div>
               )}
             </div>
@@ -1361,9 +1361,9 @@ export default function GolfScoringApp() {
               {possiblePts>0&&<div className="text-xs text-white/60 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
             </Card>
             <Card className="p-4 text-center flex flex-col justify-center">
-              <div className="text-gray-500 text-xs font-bold tracking-widest uppercase mb-1">Total</div>
-              <div className="font-bebas font-bold text-gray-900 text-2xl">{possiblePts}</div>
-              <div className="text-xs text-blue-600">Win at {toWin.toFixed(1)}</div>
+              <div className="text-white/30 text-xs font-bold tracking-widest uppercase mb-1">Total</div>
+              <div className="font-bebas font-bold text-white text-2xl">{possiblePts}</div>
+              <div className="text-xs text-[#C9A227]/70">Win at {toWin.toFixed(1)}</div>
             </Card>
             <Card className="p-4 text-center card-red">
               <div className="font-bebas font-bold text-red-300 text-5xl leading-none">{t2pts}</div>
@@ -1686,7 +1686,7 @@ export default function GolfScoringApp() {
                   <PairEntry pk={a}/>
                   <div className="text-center text-white/20 text-xs my-2 font-bold">VS</div>
                   <PairEntry pk={b}/>
-                </Card>
+                </div>
               ))}
             </div>
           ) : (
