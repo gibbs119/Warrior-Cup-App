@@ -176,13 +176,59 @@ const PRESET_COURSES: Course[] = [
 const genCode = (len = 6) => Math.random().toString(36).slice(2, 2 + len).toUpperCase();
 const courseHcp = (hi: number, slope: number) => Math.round((hi * slope) / 113);
 
+/**
+ * HANDICAP CALCULATION RULES BY FORMAT
+ * 
+ * Modified Scramble & 2-Man Scramble:
+ * - Team Handicap = 35% of lower course handicap + 15% of higher course handicap (rounded)
+ * - Example: Players with CH 8 and 21 → (8×0.35)+(21×0.15) = 2.8+3.15 = 6
+ * 
+ * Best Ball:
+ * - Each player gets 90% of their course handicap
+ * - Lowest 90% player plays scratch (0)
+ * - Others get strokes = 90% of (their 90% CH - lowest 90% CH), rounded
+ * - Example: CHs 4,12,15,20 → 90%: 3.6,10.8,13.5,18.0 → Strokes: 0,7,10,14
+ * 
+ * Alternate Shot:
+ * - Team Handicap = Sum of both course handicaps ÷ 2, rounded
+ * - Strokes allocated to higher handicap team on hardest holes
+ * - Example: Team A (CH 8+20=28→14) vs Team B (CH 5+9=14→7) → Team A gets 7 strokes
+ * 
+ * Singles:
+ * - Full course handicap for each player
+ * - Strokes based on difference between opponents
+ */
 const pairingPlayingHcp = (ids: string[], format: string, tee: Tee, players: Player[]) => {
   if (!tee || !ids?.length) return 0;
   const fmt = FORMATS[format];
-  const hcps = ids.map(id => { const p = players.find(x => x.id === id); return courseHcp(p?.handicapIndex ?? 0, tee.slope); });
-  if (fmt.hcpType === 'full')  return hcps[0] ?? 0;
-  if (fmt.hcpType === 'avg')   return Math.round(hcps.reduce((a,b)=>a+b,0)/hcps.length);
-  if (fmt.hcpType === 'avg75') return Math.round(hcps.reduce((a,b)=>a+b,0)/hcps.length*0.75);
+  const courseHcps = ids.map(id => { 
+    const p = players.find(x => x.id === id); 
+    return courseHcp(p?.handicapIndex ?? 0, tee.slope); 
+  });
+
+  // Singles - Full handicap
+  if (fmt.hcpType === 'full')  return courseHcps[0] ?? 0;
+
+  // Modified Scramble & 2-Man Scramble: 35% lower + 15% higher
+  if (format === 'modifiedscramble' || format === 'scramble') {
+    if (courseHcps.length < 2) return 0;
+    const [lower, higher] = courseHcps[0] <= courseHcps[1] 
+      ? [courseHcps[0], courseHcps[1]] 
+      : [courseHcps[1], courseHcps[0]];
+    return Math.round(lower * 0.35 + higher * 0.15);
+  }
+
+  // Alternate Shot: 50% of combined handicaps
+  if (format === 'alternateshot') {
+    return Math.round(courseHcps.reduce((a,b)=>a+b,0) / 2);
+  }
+
+  // Best Ball: This is a team handicap placeholder - actual player strokes calculated in matchplay
+  // For display purposes, show the average 90% handicap
+  if (format === 'bestball') {
+    return Math.round(courseHcps.reduce((a,b)=>a+b,0) / courseHcps.length * 0.9);
+  }
+
   return 0;
 };
 
@@ -190,6 +236,31 @@ const matchplayStrokes = (hcp1: number, hcp2: number, rank: number) => {
   const diff = Math.abs(hcp1-hcp2);
   const gets = diff>0 && rank<=diff ? 1 : 0;
   return hcp1>hcp2 ? {t1:gets,t2:0} : hcp2>hcp1 ? {t1:0,t2:gets} : {t1:0,t2:0};
+};
+
+// Best Ball: Calculate individual player strokes based on 90% allowance
+const bestBallStrokes = (m: Match, rank: number, tee: Tee, players: Player[]): Record<string,number> => {
+  const allPlayerIds = Object.values(m.pairings).flat().filter(Boolean);
+  
+  // Calculate 90% of course handicap for each player
+  const playerHcps = allPlayerIds.map(id => {
+    const p = players.find(x => x.id === id);
+    const ch = courseHcp(p?.handicapIndex ?? 0, tee.slope);
+    return { id, hcp90: ch * 0.9 };
+  });
+  
+  // Find the lowest 90% handicap
+  const lowest = Math.min(...playerHcps.map(p => p.hcp90));
+  
+  // Calculate strokes for each player: 90% of difference from lowest, rounded
+  const strokes: Record<string,number> = {};
+  for (const {id, hcp90} of playerHcps) {
+    const diff = Math.round((hcp90 - lowest) * 0.9);
+    // Player gets a stroke on this hole if rank <= their stroke allocation
+    strokes[id] = (diff > 0 && rank <= diff) ? 1 : 0;
+  }
+  
+  return strokes;
 };
 
 const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
@@ -210,21 +281,17 @@ const calcMatchPts = (m: Match) => {
 
 const blankTee = (): Tee => ({name:'',slope:113,rating:72,par:72,holes:Array.from({length:18},(_,i)=>({h:i+1,par:4,yards:0,rank:i+1}))});
 
-// ─── Whitesboro Block W Logo ─────────────────────────────────────────────────
+// ─── Whitesboro Warriors Logo (real school logo) ─────────────────────────────
+const WARRIOR_LOGO = "data:image/png;base64,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";
 const BlockW = ({ size = 64, className = '', showGolf = false }: { size?: number; className?: string; showGolf?: boolean }) => (
-  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-    {/* Block W - Classic athletic style */}
-    <path d="M10 15 L20 15 L30 60 L40 30 L50 60 L60 30 L70 60 L80 15 L90 15 L90 20 L82 20 L72 70 L62 35 L52 70 L42 35 L32 70 L22 20 L10 20 Z" 
-      fill="currentColor" stroke="currentColor" strokeWidth="0.5"/>
+  <div className={className} style={{width:size,height:size,position:'relative',display:'inline-block'}}>
+    <img src={WARRIOR_LOGO} alt="Whitesboro Warriors" width={size} height={size} style={{objectFit:'contain',display:'block'}}/>
     {showGolf && (
-      <>
-        {/* Golf flag accent */}
-        <circle cx="85" cy="25" r="10" fill="#FFB81C" opacity="0.9"/>
-        <path d="M85 22L85 28M83 25L87 25" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
-        <circle cx="85" cy="25" r="1.5" fill="white"/>
-      </>
+      <div style={{position:'absolute',bottom:-4,right:-4,background:'#FFB81C',borderRadius:'50%',width:size*0.3,height:size*0.3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.18,border:'2px solid white'}}>
+        ⛳
+      </div>
     )}
-  </svg>
+  </div>
 );
 
 // ─── Script W'boro Logo ───────────────────────────────────────────────────────
@@ -234,62 +301,65 @@ const ScriptWboro = ({ className = '' }: { className?: string }) => (
   </div>
 );
 
-// ─── Theme Tokens: Whitesboro Royal Blue ─────────────────────────────────────
-// Royal Blue: #006BB6 (primary) | Navy: #003B73 (dark) | White: #FFFFFF
-// Athletic Gold: #FFB81C (accent) | Red: #C8102E (opponent)
-const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800;900&display=swap');
-* { -webkit-tap-highlight-color: transparent; }
-body { font-family: 'Inter', sans-serif; }
-.font-bebas { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
+// ─── Theme: Whitesboro Warriors — Navy / Royal Blue / Gold ───────────────────
+// Navy: #0A1628 | Royal Blue: #006BB6 | Gold: #C9A227 | White: #F0F4FF
+const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, sans-serif; }
+.font-bebas { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.06em; }
 .font-script { font-family: 'Brush Script MT', 'Lucida Handwriting', cursive; }
-.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 16px); }
-.safe-top { padding-top: env(safe-area-inset-top, 0px); }
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px); }
+.safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
 input, select, textarea { font-size: 16px !important; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.card-dark { background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.10); }
+.card-dark-accent { background: rgba(201,162,39,0.10); backdrop-filter: blur(12px); border: 1px solid rgba(201,162,39,0.25); }
+.card-blue { background: rgba(0,107,182,0.20); backdrop-filter: blur(12px); border: 1px solid rgba(0,107,182,0.40); }
+.card-red  { background: rgba(200,16,46,0.15);  backdrop-filter: blur(12px); border: 1px solid rgba(200,16,46,0.35); }
+.glow-gold { box-shadow: 0 0 40px rgba(201,162,39,0.25), 0 4px 24px rgba(0,0,0,0.5); }
+.glow-blue { box-shadow: 0 0 24px rgba(0,107,182,0.30), 0 2px 12px rgba(0,0,0,0.4); }
 `;
 
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 const BG = ({children}: {children: React.ReactNode}) => (
-  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(165deg,#004A7C 0%,#006BB6 35%,#0080D6 100%)'}}>
+  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
     <style>{FONTS}</style>
-    {/* Retro athletic background elements */}
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
-      {/* Diagonal stripes - classic 80s athletics */}
-      <div className="absolute inset-0 opacity-[0.03]"
-        style={{backgroundImage:'repeating-linear-gradient(45deg,#FFB81C 0,#FFB81C 2px,transparent 0,transparent 40px)'}}/> 
-      {/* Radial highlights */}
-      <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full opacity-10" style={{background:'radial-gradient(circle,#FFB81C,transparent 65%)'}}/>
-      <div className="absolute bottom-0 -left-32 w-96 h-96 rounded-full opacity-10" style={{background:'radial-gradient(circle,white,transparent 65%)'}}/>
-      {/* Block W watermark */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.015]">
-        <BlockW size={400}/>
-      </div>
+      {/* Subtle diagonal rule grid */}
+      <div className="absolute inset-0" style={{backgroundImage:'repeating-linear-gradient(135deg,rgba(0,107,182,0.04) 0px,rgba(0,107,182,0.04) 1px,transparent 1px,transparent 60px)'}}/>
+      {/* Royal blue top glow */}
+      <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-80 rounded-full opacity-20" style={{background:'radial-gradient(ellipse,#006BB6,transparent 70%)'}}/>
+      {/* Gold bottom accent */}
+      <div className="absolute -bottom-20 -right-20 w-96 h-96 rounded-full opacity-10" style={{background:'radial-gradient(circle,#C9A227,transparent 70%)'}}/>
     </div>
     <div className="relative z-10">{children}</div>
   </div>
 );
 
 const Card = ({children, className='', blue=false}: {children: React.ReactNode; className?: string; blue?: boolean}) => (
-  <div className={`rounded-2xl border shadow-xl ${blue ? 'border-blue-400/30 bg-blue-900/40' : 'border-white/20 bg-white/95'} backdrop-blur-sm ${className}`}>
+  <div className={`rounded-2xl shadow-xl ${blue ? 'card-blue' : 'card-dark'} ${className}`}>
     {children}
   </div>
 );
 
-const Btn = ({onClick, children, color='blue', className='', disabled=false, sm=false}: {
+const Btn = ({onClick, children, color='gold', className='', disabled=false, sm=false}: {
   onClick?: ()=>void; children: React.ReactNode; color?: string; className?: string; disabled?: boolean; sm?: boolean;
 }) => {
   const C: Record<string,string> = {
-    blue:  'bg-[#006BB6] hover:bg-[#0080D6] text-white font-bold shadow-lg hover:shadow-xl active:scale-95 border border-blue-400/30',
-    gold:  'bg-[#FFB81C] hover:bg-[#FFC940] text-gray-900 font-black shadow-lg hover:shadow-xl active:scale-95',
-    navy:  'bg-[#003B73] hover:bg-[#004A7C] text-white border border-blue-700/50',
-    red:   'bg-[#C8102E] hover:bg-[#E01E3A] text-white border border-red-600/50',
-    green: 'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-600/50',
-    ghost: 'bg-white/10 hover:bg-white/20 text-white border border-white/20',
-    orange:'bg-orange-600 hover:bg-orange-500 text-white border border-orange-500/50',
-    teal:  'bg-teal-700 hover:bg-teal-600 text-white border border-teal-600/50',
+    gold:   'text-gray-900 font-black shadow-lg hover:opacity-90 active:scale-95',
+    blue:   'bg-[#006BB6] hover:bg-[#0080D6] text-white font-bold shadow-md active:scale-95 border border-blue-400/30',
+    navy:   'bg-[#0A1E3D] hover:bg-[#0D2448] text-white border border-white/15 active:scale-95',
+    red:    'bg-[#C8102E] hover:bg-[#E0142E] text-white border border-red-600/40 active:scale-95',
+    green:  'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500/40 active:scale-95',
+    ghost:  'bg-white/8 hover:bg-white/15 text-white/80 border border-white/15 active:scale-95',
+    orange: 'bg-orange-700 hover:bg-orange-600 text-white border border-orange-500/40 active:scale-95',
+    teal:   'bg-teal-700 hover:bg-teal-600 text-white border border-teal-500/40 active:scale-95',
   };
+  const goldStyle = color === 'gold' ? {background:'linear-gradient(135deg,#B8860B,#C9A227,#E5C04A,#C9A227)',boxShadow:'0 4px 16px rgba(201,162,39,0.35)'} : {};
   return (
-    <button onClick={onClick} disabled={disabled}
-      className={`${sm?'px-3 py-2 text-sm':'px-5 py-3'} rounded-xl font-bold transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed ${C[color]??C.blue} ${className}`}>
+    <button onClick={onClick} disabled={disabled} style={goldStyle}
+      className={`${sm?'px-3 py-2 text-sm min-h-[36px]':'px-5 py-3 min-h-[44px]'} rounded-xl font-semibold transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed ${C[color]??C.ghost} ${className}`}>
       {children}
     </button>
   );
@@ -300,9 +370,10 @@ const Inp = ({label, value, onChange, type='text', placeholder='', className='',
   type?: string; placeholder?: string; className?: string; onKeyDown?: (e:React.KeyboardEvent)=>void;
 }) => (
   <div className={className}>
-    {label && <label className="block text-xs font-bold text-blue-600 mb-1.5 tracking-wide uppercase">{label}</label>}
+    {label && <label className="block text-xs font-semibold text-white/50 mb-1.5 tracking-widest uppercase">{label}</label>}
     <input type={type} value={value??''} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onKeyDown={onKeyDown}
-      className="w-full px-4 py-3 rounded-xl outline-none text-gray-900 placeholder-gray-400 transition-all border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 bg-white"/>
+      className="w-full px-4 py-3 rounded-xl outline-none text-white placeholder-white/25 transition-all border border-white/10 focus:border-[#006BB6] focus:ring-2 focus:ring-[#006BB6]/30"
+      style={{background:'rgba(255,255,255,0.06)'}}/>
   </div>
 );
 
@@ -311,9 +382,10 @@ const Sel = ({label, value, onChange, options, className=''}: {
   options: {value: string|number; label: string}[]; className?: string;
 }) => (
   <div className={className}>
-    {label && <label className="block text-xs font-bold text-blue-600 mb-1.5 tracking-wide uppercase">{label}</label>}
+    {label && <label className="block text-xs font-semibold text-white/50 mb-1.5 tracking-widest uppercase">{label}</label>}
     <select value={value} onChange={e=>onChange(e.target.value)}
-      className="w-full px-4 py-3 rounded-xl outline-none text-gray-900 border-2 border-gray-200 focus:border-blue-500 bg-white appearance-none">
+      className="w-full px-4 py-3 rounded-xl outline-none text-white border border-white/10 focus:border-[#006BB6] appearance-none"
+      style={{background:'rgba(10,22,40,0.95)'}}>
       {options.map(o=><option key={String(o.value)} value={o.value}>{o.label}</option>)}
     </select>
   </div>
@@ -321,13 +393,13 @@ const Sel = ({label, value, onChange, options, className=''}: {
 
 const Badge = ({children, color='gray'}: {children: React.ReactNode; color?: string}) => {
   const C: Record<string,string> = {
-    green: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-    blue:  'bg-blue-100 text-blue-800 border-blue-300',
-    red:   'bg-red-100 text-red-800 border-red-300',
-    gray:  'bg-gray-100 text-gray-600 border-gray-300',
-    orange:'bg-orange-100 text-orange-800 border-orange-300',
-    purple:'bg-purple-100 text-purple-800 border-purple-300',
-    gold:  'bg-yellow-100 text-yellow-800 border-yellow-300',
+    green:  'bg-emerald-900/60 text-emerald-300 border-emerald-700/50',
+    blue:   'bg-blue-900/60 text-blue-300 border-blue-600/50',
+    red:    'bg-red-900/60 text-red-300 border-red-700/50',
+    gray:   'bg-white/8 text-white/50 border-white/10',
+    orange: 'bg-orange-900/60 text-orange-300 border-orange-700/50',
+    purple: 'bg-purple-900/60 text-purple-300 border-purple-700/50',
+    gold:   'bg-yellow-900/50 text-yellow-300 border-yellow-600/50',
   };
   return <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border ${C[color]??C.gray}`}>{children}</span>;
 };
@@ -509,6 +581,61 @@ export default function GolfScoringApp() {
       return {matchupResults:[{a:'t1',b:'t2',winner,netA:t1Best,netB:t2Best,isTeamResult:true}],skinWinner,rank,hd};
     }
 
+    // Best Ball - Individual player strokes based on 90% allowance
+    if (m.format === 'bestball') {
+      const playerStrokes = bestBallStrokes(m, rank, tee, tData.players);
+      
+      const pairs = getMatchupPairs(m.format);
+      const matchupResults = pairs.map(([a,b]) => {
+        // Get all individual player scores for each team
+        const idsA = m.pairings[a] ?? [];
+        const idsB = m.pairings[b] ?? [];
+        
+        // Calculate net scores for each player (raw - strokes)
+        const netsA = idsA.map(id => {
+          const raw = scores[id]?.[hole-1];
+          if (raw == null) return null;
+          return raw - (playerStrokes[id] || 0);
+        }).filter((v): v is number => v != null);
+        
+        const netsB = idsB.map(id => {
+          const raw = scores[id]?.[hole-1];
+          if (raw == null) return null;
+          return raw - (playerStrokes[id] || 0);
+        }).filter((v): v is number => v != null);
+        
+        if (!netsA.length || !netsB.length) return {a,b,winner:null as string|null,netA:0,netB:0};
+        
+        // Best ball: take the lowest net score from each team
+        const netA = Math.min(...netsA);
+        const netB = Math.min(...netsB);
+        
+        return {a,b,netA,netB,winner:netA<netB?'t1p':netB<netA?'t2p':'tie'};
+      });
+      
+      // Skins for Best Ball - use same player strokes
+      const allPkKeys = Object.keys(m.pairings);
+      const skinNets = allPkKeys.map(pk=>{
+        const ids = m.pairings[pk] ?? [];
+        const nets = ids.map(id => {
+          const raw = scores[id]?.[hole-1];
+          if (raw == null) return null;
+          return raw - (playerStrokes[id] || 0);
+        }).filter((v): v is number => v != null);
+        if (!nets.length) return null;
+        return {pk, ids, net: Math.min(...nets)};
+      }).filter(Boolean) as {pk:string;ids:string[];net:number}[];
+      
+      let skinWinner=null;
+      if(skinNets.length>=4){
+        const best=Math.min(...skinNets.map(x=>x.net));
+        const w=skinNets.filter(x=>x.net===best);
+        if(w.length===1) skinWinner=w[0];
+      }
+      
+      return {matchupResults, skinWinner, rank, hd};
+    }
+
     const pairs = getMatchupPairs(m.format);
     const matchupResults = pairs.map(([a,b]) => {
       const rawA=pairRawScore(m,a,hole,scores), rawB=pairRawScore(m,b,hole,scores);
@@ -687,19 +814,19 @@ export default function GolfScoringApp() {
 
   // ── Top Navigation Bar ────────────────────────────────────────────────────────
   const TopBar = ({title,back}:{title?:string;back?:()=>void}) => (
-    <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/20 bg-white/95 backdrop-blur-sm">
+    <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/10" style={{background:'rgba(6,14,28,0.85)',backdropFilter:'blur(12px)'}}>
       <div className="flex items-center gap-3 min-w-0">
         {back ? (
-          <button onClick={back} className="flex items-center gap-1 text-blue-600 text-sm font-bold shrink-0">
+          <button onClick={back} className="flex items-center gap-1 text-[#C9A227] text-sm font-semibold shrink-0">
             <ChevronLeft className="w-4 h-4"/>Back
           </button>
         ) : (
-          <div className="text-[#006BB6] shrink-0"><BlockW size={36}/></div>
+          <div className="shrink-0"><BlockW size={38}/></div>
         )}
         <div className="min-w-0">
-          <h1 className="font-bebas font-bold text-gray-900 text-lg leading-tight truncate">{title ?? tData?.name}</h1>
+          <h1 className="font-bebas font-bold text-white text-lg leading-tight truncate">{title ?? tData?.name}</h1>
           {tee && !title && (
-            <div className="text-xs text-gray-500 truncate">
+            <div className="text-xs text-white/35 truncate">
               {(tData?.courses??[]).find(c=>c.id===tData?.activeCourseId)?.name??''} · {tee.name} · Slope {tee.slope}
             </div>
           )}
@@ -708,15 +835,15 @@ export default function GolfScoringApp() {
       <div className="flex gap-2 items-center shrink-0">
         <Badge color={role==='admin'?'gold':'blue'}>{role==='admin'?'Admin':'Player'}</Badge>
         {role==='admin'&&screen!=='admin'&&(
-          <button onClick={()=>setScreen('admin')} className="text-gray-600 hover:text-gray-900 text-xs px-2 py-1.5 rounded-lg border border-gray-300 hover:border-gray-400">⚙</button>
+          <button onClick={()=>setScreen('admin')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">⚙</button>
         )}
         {screen!=='standings'&&(
-          <button onClick={()=>setScreen('standings')} className="text-gray-600 hover:text-gray-900 text-xs px-2 py-1.5 rounded-lg border border-gray-300 hover:border-gray-400">📊</button>
+          <button onClick={()=>setScreen('standings')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">📊</button>
         )}
         {screen!=='tournament'&&(
-          <button onClick={()=>setScreen('tournament')} className="text-gray-600 hover:text-gray-900 text-xs px-2 py-1.5 rounded-lg border border-gray-300 hover:border-gray-400">📅</button>
+          <button onClick={()=>setScreen('tournament')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">📅</button>
         )}
-        <button onClick={logout} className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg border border-gray-300 hover:border-red-400">
+        <button onClick={logout} className="text-white/30 hover:text-red-400 p-1.5 rounded-lg border border-white/10 hover:border-red-400/40">
           <LogOut className="w-3.5 h-3.5"/>
         </button>
       </div>
@@ -729,43 +856,42 @@ export default function GolfScoringApp() {
   if (screen==='login') return (
     <BG>
       <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5 safe-top safe-bottom">
-        {/* Hero Header - Whitesboro Warriors */}
+        {/* Hero Header */}
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-6">
+          {/* Logo with gold glow ring */}
+          <div className="flex justify-center mb-5">
             <div className="relative">
-              {/* Glow effect */}
-              <div className="absolute inset-0 rounded-full blur-3xl opacity-30" style={{background:'radial-gradient(circle,#FFB81C,transparent 70%)'}}/>
-              {/* Block W logo */}
-              <div className="relative z-10 text-white">
-                <BlockW size={110} showGolf/>
+              <div className="absolute inset-0 rounded-full blur-2xl opacity-50" style={{background:'radial-gradient(circle,#C9A227,transparent 70%)'}}/>
+              <div className="relative z-10 rounded-full p-1" style={{background:'linear-gradient(135deg,#B8860B,#C9A227,#E5C04A,#C9A227)',boxShadow:'0 0 40px rgba(201,162,39,0.5), 0 0 80px rgba(201,162,39,0.2)'}}>
+                <div className="rounded-full overflow-hidden" style={{width:110,height:110,background:'#0A1628'}}>
+                  <BlockW size={110}/>
+                </div>
               </div>
             </div>
           </div>
-          
-          {/* WARRIOR CUP title in Bebas Neue */}
-          <h1 className="font-bebas font-bold text-white mb-2" style={{fontSize:'clamp(2.5rem,9vw,4rem)',lineHeight:'0.9',textShadow:'0 4px 20px rgba(0,0,0,0.3)'}}>
+
+          {/* WARRIOR CUP */}
+          <h1 className="font-bebas text-white mb-1" style={{fontSize:'clamp(2.8rem,10vw,4.2rem)',lineHeight:'0.9',letterSpacing:'0.08em',textShadow:'0 2px 20px rgba(0,0,0,0.5)'}}>
             WARRIOR CUP
           </h1>
-          
-          {/* Script W'boro */}
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="h-px w-12 bg-white/40"/>
-            <ScriptWboro className="text-white text-3xl opacity-90"/>
-            <div className="h-px w-12 bg-white/40"/>
+
+          {/* Decorative script W'boro */}
+          <div className="flex items-center justify-center gap-3 my-2">
+            <div className="h-px flex-1 max-w-[60px]" style={{background:'linear-gradient(90deg,transparent,rgba(201,162,39,0.6))'}}/>
+            <ScriptWboro className="text-[#C9A227] text-2xl"/>
+            <div className="h-px flex-1 max-w-[60px]" style={{background:'linear-gradient(270deg,transparent,rgba(201,162,39,0.6))'}}/>
           </div>
-          
-          {/* Whitesboro Warriors subtitle */}
-          <div className="text-white/90 text-sm font-bold tracking-widest mb-1">WHITESBORO WARRIORS</div>
-          <div className="text-white/50 text-xs tracking-wider">MARCY, NY · RYDER CUP STYLE GOLF</div>
+
+          <div className="text-white/40 text-xs tracking-[0.3em] uppercase font-medium">Ryder Cup Style Golf</div>
         </div>
 
         <div className="w-full max-w-sm space-y-3">
           {/* Join Form */}
-          <Card className="p-5 space-y-4">
+          <div className="rounded-2xl p-5 space-y-4 card-dark glow-blue">
             <Inp label="Tournament ID" value={tournId} onChange={v=>setTournId(v.toUpperCase())} placeholder="e.g. ABC123" onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
             <Inp label="Passcode" value={passcode} onChange={setPasscode} placeholder="Enter passcode" onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
             {loginErr && (
-              <div className="text-sm text-red-700 font-semibold bg-red-50 border border-red-300 p-3 rounded-xl">
+              <div className="text-sm text-red-300 font-semibold rounded-xl p-3 border border-red-700/40" style={{background:'rgba(200,16,46,0.15)'}}>
                 ⚠ {loginErr}
               </div>
             )}
@@ -773,23 +899,26 @@ export default function GolfScoringApp() {
               <Btn color="blue" onClick={()=>joinTournament(false)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
                 <Users className="w-4 h-4"/><span>Player</span>
               </Btn>
-              <Btn color="navy" onClick={()=>joinTournament(true)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
+              <Btn color="ghost" onClick={()=>joinTournament(true)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
                 <Lock className="w-4 h-4"/><span>Admin</span>
               </Btn>
             </div>
-          </Card>
-
-          {/* Create New */}
-          <div className="text-center">
-            <div className="text-white/40 text-xs mb-3 tracking-widest">— START A NEW TOURNAMENT —</div>
-            <Btn color="gold" onClick={createTournament} disabled={loading} className="w-full flex items-center justify-center gap-2 py-4">
-              <Trophy className="w-5 h-5"/>
-              <span className="font-bebas text-xl tracking-wider">Create Warrior Cup</span>
-            </Btn>
           </div>
 
-          {/* Go Blue tagline */}
-          <div className="text-center text-white/30 text-xs pt-2 font-bold tracking-widest">GO BLUE</div>
+          {/* Divider */}
+          <div className="flex items-center gap-3 px-2">
+            <div className="h-px flex-1 bg-white/10"/>
+            <span className="text-white/25 text-xs tracking-widest">OR</span>
+            <div className="h-px flex-1 bg-white/10"/>
+          </div>
+
+          {/* Create New */}
+          <Btn color="gold" onClick={createTournament} disabled={loading} className="w-full flex items-center justify-center gap-2 py-4">
+            <Trophy className="w-5 h-5"/>
+            <span className="font-bebas text-xl tracking-wider">Create Warrior Cup</span>
+          </Btn>
+
+          <div className="text-center text-white/20 text-xs pt-1 tracking-[0.4em] font-bebas">GO BLUE</div>
         </div>
       </div>
     </BG>
@@ -799,8 +928,8 @@ export default function GolfScoringApp() {
     <BG>
       <div className="flex items-center justify-center min-h-[100dvh]">
         <div className="text-center">
-          <div className="text-white mb-4"><BlockW size={56}/></div>
-          <div className="text-white/70 text-lg font-bebas tracking-wide">Loading Tournament…</div>
+          <div className="mb-4 flex justify-center"><BlockW size={56}/></div>
+          <div className="text-white/50 text-lg font-bebas tracking-widest">Loading…</div>
         </div>
       </div>
     </BG>
@@ -815,98 +944,101 @@ export default function GolfScoringApp() {
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
 
         {/* Share Codes */}
-        <Card blue className="p-4">
-          <div className="text-xs font-bold text-blue-200 mb-3 tracking-widest uppercase flex items-center gap-2">
+        <div className="rounded-2xl p-4 card-dark-accent">
+          <div className="text-xs font-bold text-[#C9A227] mb-3 tracking-widest uppercase flex items-center gap-2">
             <Shield className="w-3.5 h-3.5"/>Tournament Access Codes
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             {[
-              {label:'Tournament ID', value:tData.id, color:'text-white'},
-              {label:'Player Code', value:tData.passcode, color:'text-blue-200'},
-              {label:'Admin Code', value:tData.adminPasscode, color:'text-yellow-200'},
+              {label:'Tournament ID', value:tData.id, color:'text-[#C9A227]'},
+              {label:'Player Code', value:tData.passcode, color:'text-blue-300'},
+              {label:'Admin Code', value:tData.adminPasscode, color:'text-orange-300'},
             ].map(({label,value,color})=>(
-              <div key={label} className="bg-white/10 rounded-xl p-3 backdrop-blur">
-                <div className="text-xs text-white/60 mb-1">{label}</div>
+              <div key={label} className="rounded-xl p-3" style={{background:'rgba(0,0,0,0.3)'}}>
+                <div className="text-xs text-white/40 mb-1">{label}</div>
                 <div className={`font-bebas font-bold text-xl ${color}`}>{value}</div>
               </div>
             ))}
           </div>
-        </Card>
+        </div>
 
         {/* Tournament Name */}
-        <Card className="p-4">
-          <label className="text-xs font-bold text-blue-600 mb-2 block tracking-wide uppercase">Tournament Name</label>
+        <div className="rounded-2xl p-4 card-dark">
+          <label className="text-xs font-semibold text-white/50 mb-2 block tracking-widest uppercase">Tournament Name</label>
           <input value={tData.name} onChange={e=>updateTournament(d=>({...d,name:e.target.value}))}
-            className="w-full px-4 py-3 rounded-xl text-gray-900 font-bebas font-bold text-lg border-2 border-gray-200 focus:border-blue-500 outline-none bg-white"/>
-        </Card>
+            className="w-full px-4 py-3 rounded-xl text-white font-bebas font-bold text-lg border border-white/10 focus:border-[#006BB6] outline-none"
+            style={{background:'rgba(255,255,255,0.06)'}}/>
+        </div>
 
         {/* Teams */}
         <div className="grid grid-cols-2 gap-3">
           {(['team1','team2'] as const).map(key=>(
-            <Card key={key} className={`p-4`}>
-              <div className="text-xs text-gray-500 mb-2 font-bold uppercase">{key==='team1'?'Team 1':'Team 2'}</div>
+            <div key={key} className={`rounded-2xl p-4 ${key==='team1'?'card-blue':'card-red'}`}>
+              <div className="text-xs text-white/40 mb-2 uppercase tracking-wider">{key==='team1'?'Team 1':'Team 2'}</div>
               <input value={tData.teamNames[key]} onChange={e=>updateTournament(d=>({...d,teamNames:{...d.teamNames,[key]:e.target.value}}))}
-                className={`w-full px-2 py-1.5 rounded-xl font-bebas font-bold text-base border-2 outline-none ${key==='team1'?'text-blue-600 border-blue-300':'text-red-600 border-red-300'} bg-white`}/>
-              <div className="text-xs text-gray-400 mt-2">{tData.teams[key].length}/4 players</div>
-            </Card>
+                className={`w-full px-2 py-1.5 rounded-xl font-bebas font-bold text-base border outline-none ${key==='team1'?'text-blue-300 border-blue-500/30':'text-red-300 border-red-500/30'}`}
+                style={{background:'rgba(0,0,0,0.3)'}}/>
+              <div className="text-xs text-white/30 mt-2">{tData.teams[key].length}/4 players</div>
+            </div>
           ))}
         </div>
 
         {/* Players */}
-        <Card className="p-4">
+        <div className="rounded-2xl p-4 card-dark">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bebas font-bold text-gray-900 text-lg">Players</h2>
+            <h2 className="font-bebas font-bold text-white text-lg">Players</h2>
             <Btn color="green" sm onClick={()=>updateTournament(d=>({...d,players:[...d.players,{id:'p'+Date.now(),name:'New Player',handicapIndex:0,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}}]}))}>
               <span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add</span>
             </Btn>
           </div>
           <div className="space-y-2">
             {(tData.players??[]).map(p=>(
-              <div key={p.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-gray-200 flex-wrap bg-gray-50">
+              <div key={p.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-white/8 flex-wrap" style={{background:'rgba(255,255,255,0.04)'}}>
                 <input value={p.name} onChange={e=>updateTournament(d=>({...d,players:d.players.map(x=>x.id===p.id?{...x,name:e.target.value}:x)}))}
-                  className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-gray-900 text-sm font-bold border border-gray-300 outline-none bg-white" style={{minWidth:'80px'}}/>
-                <span className="text-gray-500 text-xs">HI:</span>
+                  className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-white text-sm font-bold border border-white/10 outline-none" style={{background:'rgba(255,255,255,0.07)',minWidth:'80px'}}/>
+                <span className="text-white/30 text-xs">HI:</span>
                 <input type="number" value={p.handicapIndex} onChange={e=>updateTournament(d=>({...d,players:d.players.map(x=>x.id===p.id?{...x,handicapIndex:parseFloat(e.target.value)||0}:x)}))}
-                  className="w-14 px-2 py-1.5 rounded-lg text-gray-900 text-sm text-center border border-gray-300 outline-none bg-white"/>
-                {tee&&<span className="text-xs text-blue-600 font-bold">HC {courseHcp(p.handicapIndex,tee.slope)}</span>}
+                  className="w-14 px-2 py-1.5 rounded-lg text-white text-sm text-center border border-white/10 outline-none" style={{background:'rgba(255,255,255,0.07)'}}/>
+                {tee&&<span className="text-xs text-[#C9A227] font-bold">HC {courseHcp(p.handicapIndex,tee.slope)}</span>}
                 <button onClick={()=>updateTournament(d=>({...d,teams:{team1:d.teams.team1.includes(p.id)?d.teams.team1.filter(x=>x!==p.id):[...d.teams.team1.filter(x=>x!==p.id),p.id],team2:d.teams.team2.filter(x=>x!==p.id)}}))}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team1.includes(p.id)?'bg-blue-600 text-white border-blue-500':'border-gray-300 text-gray-600 hover:border-blue-500'}`}>{tData.teamNames.team1}</button>
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team1.includes(p.id)?'bg-blue-600 text-white border-blue-500':'border-white/10 text-white/40 hover:border-blue-500/50'}`}>{tData.teamNames.team1}</button>
                 <button onClick={()=>updateTournament(d=>({...d,teams:{team2:d.teams.team2.includes(p.id)?d.teams.team2.filter(x=>x!==p.id):[...d.teams.team2.filter(x=>x!==p.id),p.id],team1:d.teams.team1.filter(x=>x!==p.id)}}))}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team2.includes(p.id)?'bg-red-600 text-white border-red-500':'border-gray-300 text-gray-600 hover:border-red-500'}`}>{tData.teamNames.team2}</button>
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team2.includes(p.id)?'bg-red-600 text-white border-red-500':'border-white/10 text-white/40 hover:border-red-500/50'}`}>{tData.teamNames.team2}</button>
                 <button onClick={()=>updateTournament(d=>({...d,players:d.players.filter(x=>x.id!==p.id),teams:{team1:d.teams.team1.filter(x=>x!==p.id),team2:d.teams.team2.filter(x=>x!==p.id)}}))}
-                  className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5"/></button>
+                  className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>
               </div>
             ))}
-            {!tData.players?.length&&<div className="text-center text-gray-400 py-6">No players yet</div>}
+            {!tData.players?.length&&<div className="text-center text-white/30 py-6">No players yet</div>}
           </div>
-        </Card>
+        </div>
 
         {/* Courses */}
-        <Card className="p-4">
+        <div className="rounded-2xl p-4 card-dark">
           <div className="flex items-center justify-between mb-1">
-            <h2 className="font-bebas font-bold text-gray-900 text-lg">Courses & Tees</h2>
+            <h2 className="font-bebas font-bold text-white text-lg">Courses & Tees</h2>
             <Btn color="teal" sm onClick={()=>setScreen('courseSearch')}>
               <span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add Course</span>
             </Btn>
           </div>
-          <p className="text-xs text-gray-500 mb-4">Default tee shown. Each match can override independently.</p>
+          <p className="text-xs text-white/30 mb-4">Default tee shown. Each match can override independently.</p>
           {(tData.courses??[]).map(c=>(
-            <div key={c.id} className={`mb-3 p-3 rounded-xl border-2 transition-all ${tData.activeCourseId===c.id?'border-blue-500 bg-blue-50':'border-gray-200 bg-gray-50'}`}>
+            <div key={c.id} className={`mb-3 p-3 rounded-xl border-2 transition-all ${tData.activeCourseId===c.id?'border-[#C9A227]/60':'border-white/8'}`}
+              style={{background:tData.activeCourseId===c.id?'rgba(201,162,39,0.08)':'rgba(255,255,255,0.03)'}}>
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <div className="font-bold text-gray-900 text-sm">{c.name}</div>
-                  {c.location&&<div className="text-xs text-gray-500">{c.location}</div>}
+                  <div className="font-bold text-white text-sm">{c.name}</div>
+                  {c.location&&<div className="text-xs text-white/30">{c.location}</div>}
                 </div>
                 <button onClick={()=>updateTournament(d=>({...d,courses:d.courses.filter(x=>x.id!==c.id)}))}
-                  className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3"/></button>
+                  className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3 h-3"/></button>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {c.tees.map(t=>{
-                  const totalYards = t.holes.reduce((s,h)=>s+h.yards,0);
                   const isActive = tData.activeCourseId===c.id && tData.activeTeeId===t.name;
                   return (
                     <button key={t.name} onClick={()=>updateTournament(d=>({...d,activeCourseId:c.id,activeTeeId:t.name}))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isActive?'border-blue-500 bg-blue-600 text-white':'border-gray-300 bg-white text-gray-600 hover:border-blue-400'}`}>
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isActive?'border-[#C9A227] text-[#C9A227]':'border-white/10 text-white/50 hover:border-white/30'}`}
+                      style={{background:isActive?'rgba(201,162,39,0.12)':'rgba(255,255,255,0.04)'}}>
                       {t.name} · {t.slope}/{t.rating} · P{t.par}
                     </button>
                   );
@@ -914,7 +1046,7 @@ export default function GolfScoringApp() {
               </div>
             </div>
           ))}
-        </Card>
+        </div>
 
         <Btn color="gold" onClick={()=>setScreen('tournament')} className="w-full flex items-center justify-center gap-2 py-4">
           <Flag className="w-5 h-5"/>
@@ -1042,40 +1174,40 @@ export default function GolfScoringApp() {
       ];
 
       const PairingPicker = ({pk,label,pool,isT1,oppPk}:{pk:string;label:string;pool:Player[];isT1:boolean;oppPk:string}) => (
-        <div className={`p-3 rounded-xl border-2 ${isT1?'border-blue-300 bg-blue-50':'border-red-300 bg-red-50'}`}>
-          <div className={`text-xs font-bold mb-2 tracking-wider ${isT1?'text-blue-700':'text-red-700'}`}>{label}</div>
+        <div className={`p-3 rounded-xl border-2 ${isT1?'card-blue':'card-red'}`}>
+          <div className={`text-xs font-bold mb-2 tracking-wider ${isT1?'text-blue-300':'text-red-300'}`}>{label}</div>
           {isSgl?(
             <select value={m.pairings[pk]?.[0]??''} onChange={e=>setMatchPairing(pk,0,e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-gray-900 text-sm border-2 border-gray-200 outline-none appearance-none bg-white">
+              className="w-full px-3 py-2 rounded-lg text-white text-sm border border-white/10 outline-none appearance-none" style={{background:'rgba(10,22,40,0.9)'}}>
               {playerOpts(pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[pk]?.[0]}>{o.label}</option>)}
             </select>
           ):(
             <div className="space-y-1.5">
               {[0,1].map(slot=>(
                 <select key={slot} value={m.pairings[pk]?.[slot]??''} onChange={e=>setMatchPairing(pk,slot,e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-gray-900 text-sm border-2 border-gray-200 outline-none appearance-none bg-white">
+                  className="w-full px-3 py-2 rounded-lg text-white text-sm border border-white/10 outline-none appearance-none" style={{background:'rgba(10,22,40,0.9)'}}>
                   {playerOpts(pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[pk]?.[slot]}>{o.label}</option>)}
                 </select>
               ))}
             </div>
           )}
           {(m.pairingHcps[pk]??0)>0&&(
-            <div className={`text-xs font-bold mt-1.5 ${isT1?'text-blue-700':'text-red-700'}`}>
+            <div className={`text-xs font-bold mt-1.5 ${isT1?'text-blue-300':'text-red-300'}`}>
               HC {m.pairingHcps[pk]}<span className="text-gray-500 font-normal ml-1">vs {m.pairingHcps[oppPk]??0} · diff {Math.abs((m.pairingHcps[pk]??0)-(m.pairingHcps[oppPk]??0))}</span>
             </div>
           )}
         </div>
       );
 
-      const borderColor = m.completed ? 'border-emerald-400' : result ? 'border-yellow-400' : 'border-gray-200';
-      const bgColor = m.completed ? 'bg-emerald-50' : result ? 'bg-yellow-50' : 'bg-white';
+      const borderColor = m.completed ? 'border-emerald-500/50' : result ? 'border-yellow-500/40' : 'border-white/10';
+      const bgStyle: React.CSSProperties = m.completed ? {background:'rgba(5,46,22,0.4)'} : result ? {background:'rgba(113,63,18,0.3)'} : {background:'rgba(255,255,255,0.05)'};
 
       return (
-        <div className={`p-4 rounded-2xl border-2 ${borderColor} ${bgColor}`}>
+        <div className={`p-4 rounded-2xl border-2 ${borderColor}`} style={bgStyle}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className="font-bebas font-bold text-gray-900">{fmt.name}</span>
+                <span className="font-bebas font-bold text-white">{fmt.name}</span>
                 <Badge color={m.startHole===1?'blue':'purple'}>{m.startHole===1?'Front 9':'Back 9'}</Badge>
                 <Badge color="gray">{m.holes}H</Badge>
                 <Badge color="gold">{totalPts}pts</Badge>
@@ -1092,7 +1224,7 @@ export default function GolfScoringApp() {
             </div>
             <div className="flex gap-2 items-center flex-wrap justify-end">
               {role==='admin'&&!m.completed&&(
-                <button onClick={()=>toggleExpanded(m.id)} className="text-gray-600 hover:text-gray-900 text-xs font-bold border border-gray-300 px-2.5 py-1.5 rounded-lg">
+                <button onClick={()=>toggleExpanded(m.id)} className="text-white/40 hover:text-white text-xs font-bold border border-white/10 px-2.5 py-1.5 rounded-lg">
                   {isExpanded?'▲':'▼ Edit'}
                 </button>
               )}
@@ -1127,7 +1259,7 @@ export default function GolfScoringApp() {
           </div>
 
           {isExpanded&&role==='admin'&&(
-            <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
+            <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
               <Sel label="Course & Tee for this match" value={`${m.courseId??tData.activeCourseId}::${m.teeId??tData.activeTeeId}`}
                 onChange={setMatchCourseTee} options={allTeeOpts}/>
               {isSgl ? (
@@ -1135,26 +1267,26 @@ export default function GolfScoringApp() {
                   <div className="text-xs font-bold text-gray-600 mb-2 tracking-wider uppercase">4 Individual Matchups (1pt each)</div>
                   <div className="grid grid-cols-1 gap-2">
                     {([['t1p1','t2p1'],['t1p2','t2p2'],['t1p3','t2p3'],['t1p4','t2p4']] as const).map(([a,b],i)=>(
-                      <div key={i} className="p-3 rounded-xl border border-gray-200 bg-gray-50">
-                        <div className="text-xs font-bold text-gray-600 mb-2">Match {i+1}</div>
+                      <div key={i} className="p-3 rounded-xl border border-white/10" style={{background:'rgba(255,255,255,0.04)'}}>
+                        <div className="text-xs font-bold text-white/40 mb-2">Match {i+1}</div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <div className="text-xs text-blue-600 font-bold mb-1">{tData.teamNames.team1}</div>
+                            <div className="text-xs text-blue-300 font-bold mb-1">{tData.teamNames.team1}</div>
                             <select value={m.pairings[a]?.[0]??''} onChange={e=>setMatchPairing(a,0,e.target.value)}
-                              className="w-full px-2 py-2 rounded-lg text-gray-900 text-xs border-2 border-gray-200 outline-none appearance-none bg-white">
+                              className="w-full px-2 py-2 rounded-lg text-white text-xs border border-white/10 outline-none appearance-none" style={{background:'rgba(10,22,40,0.9)'}}>
                               {playerOpts(t1pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[a]?.[0]}>{o.label}</option>)}
                             </select>
                           </div>
                           <div>
-                            <div className="text-xs text-red-600 font-bold mb-1">{tData.teamNames.team2}</div>
+                            <div className="text-xs text-red-300 font-bold mb-1">{tData.teamNames.team2}</div>
                             <select value={m.pairings[b]?.[0]??''} onChange={e=>setMatchPairing(b,0,e.target.value)}
-                              className="w-full px-2 py-2 rounded-lg text-gray-900 text-xs border-2 border-gray-200 outline-none appearance-none bg-white">
+                              className="w-full px-2 py-2 rounded-lg text-white text-xs border border-white/10 outline-none appearance-none" style={{background:'rgba(10,22,40,0.9)'}}>
                               {playerOpts(t2pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[b]?.[0]}>{o.label}</option>)}
                             </select>
                           </div>
                         </div>
                         {(m.pairingHcps[a]||m.pairingHcps[b])&&(
-                          <div className="text-xs text-gray-500 mt-1 text-center">HC {m.pairingHcps[a]??0} vs {m.pairingHcps[b]??0}</div>
+                          <div className="text-xs text-white/30 mt-1 text-center">HC {m.pairingHcps[a]??0} vs {m.pairingHcps[b]??0}</div>
                         )}
                       </div>
                     ))}
@@ -1185,8 +1317,8 @@ export default function GolfScoringApp() {
       const fmt = FORMATS[f.format];
       const pts = fmt.pointsPerMatchup * fmt.numMatchups * (f.holes===18?2:1);
       return (
-        <div className="p-4 rounded-2xl border-2 border-yellow-400 bg-yellow-50">
-          <div className="font-bebas font-bold text-yellow-900 mb-3 text-lg">New Match</div>
+        <div className="p-4 rounded-2xl card-dark-accent rounded-2xl">
+          <div className="font-bebas font-bold text-[#C9A227] mb-3 text-lg">New Match</div>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Sel label="Format" value={f.format} onChange={v=>setF(x=>({...x,format:v}))}
               options={Object.entries(FORMATS).map(([k,v])=>({value:k,label:v.name}))}/>
@@ -1198,7 +1330,7 @@ export default function GolfScoringApp() {
           <Sel label="Course & Tee" value={`${f.courseId}::${f.teeId}`}
             onChange={v=>{const[cid,tid]=v.split('::');setF(x=>({...x,courseId:cid,teeId:tid}));}}
             options={allTeeOpts} className="mb-3"/>
-          <div className="text-sm font-bold text-yellow-800 mb-3">
+          <div className="text-sm font-bold text-[#C9A227]/80 mb-3">
             {fmt.perHole ? '0.5 pts — winner of most holes' : `${pts} pts available`}
           </div>
           <div className="flex gap-2">
@@ -1233,23 +1365,23 @@ export default function GolfScoringApp() {
               <div className="font-bebas font-bold text-gray-900 text-2xl">{possiblePts}</div>
               <div className="text-xs text-blue-600">Win at {toWin.toFixed(1)}</div>
             </Card>
-            <Card className="p-4 text-center bg-red-50">
-              <div className="font-bebas font-bold text-red-700 text-5xl leading-none">{t2pts}</div>
-              <div className="font-bold text-red-700 text-sm mt-1 truncate">{tData.teamNames.team2}</div>
-              {possiblePts>0&&<div className="text-xs text-gray-500 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
+            <Card className="p-4 text-center card-red">
+              <div className="font-bebas font-bold text-red-300 text-5xl leading-none">{t2pts}</div>
+              <div className="font-bold text-red-200 text-sm mt-1 truncate">{tData.teamNames.team2}</div>
+              {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
             </Card>
           </div>
 
           {/* Matches */}
           <Card className="p-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bebas font-bold text-gray-900 text-xl">Match Schedule</h2>
+              <h2 className="font-bebas font-bold text-white text-xl">Match Schedule</h2>
               {role==='admin'&&<Btn color="green" sm onClick={()=>setShowMatchBuilder(true)} disabled={showMatchBuilder}><span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add Match</span></Btn>}
             </div>
             {showMatchBuilder&&role==='admin'&&<div className="mb-4"><AddMatchForm/></div>}
             {!tData.matches?.length&&!showMatchBuilder&&(
-              <div className="text-center text-gray-400 py-12">
-                <Flag className="w-10 h-10 mx-auto mb-3 opacity-30 text-gray-300"/>
+              <div className="text-center text-white/30 py-12">
+                <Flag className="w-10 h-10 mx-auto mb-3 text-white/20"/>
                 <div>{role==='admin'?'No matches yet — add one above':'No matches scheduled yet'}</div>
               </div>
             )}
@@ -1549,7 +1681,7 @@ export default function GolfScoringApp() {
           {isSgl ? (
             <div className="grid grid-cols-1 gap-3">
               {matchPairs.map(([a,b],i)=>(
-                <Card key={i} className="p-4">
+                <div key={i} className="p-4 rounded-2xl card-dark">
                   <div className="text-xs font-bold text-white/30 mb-3 tracking-widest uppercase">Match {i+1}</div>
                   <PairEntry pk={a}/>
                   <div className="text-center text-white/20 text-xs my-2 font-bold">VS</div>
@@ -1616,30 +1748,30 @@ export default function GolfScoringApp() {
         <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
 
           {/* Championship Score Display */}
-          <div className="relative rounded-3xl overflow-hidden border-2 border-white/20 p-6 bg-white/95 backdrop-blur">
+          <div className="relative rounded-3xl overflow-hidden p-6 card-dark glow-blue border border-white/15">
             <div className="absolute inset-0 opacity-5 flex items-center justify-center">
               <div className="text-blue-600"><BlockW size={180}/></div>
             </div>
             <div className="relative flex items-center justify-between">
               <div className="text-center flex-1">
-                <div className="font-bebas font-black text-6xl text-blue-600 leading-none drop-shadow-lg">{t1pts}</div>
-                <div className="font-bebas font-bold text-blue-600 text-lg mt-1">{tData.teamNames.team1}</div>
-                {possiblePts>0&&<div className="text-xs text-gray-500 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
+                <div className="font-bebas font-black text-6xl text-blue-200 leading-none drop-shadow-lg">{t1pts}</div>
+                <div className="font-bebas font-bold text-blue-300 text-lg mt-1">{tData.teamNames.team1}</div>
+                {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
               </div>
               <div className="text-center px-4">
-                <div className="text-gray-400 font-bebas text-2xl font-bold">VS</div>
-                <div className="text-blue-600 text-xs mt-1">{possiblePts}pts total</div>
-                <div className="text-gray-500 text-xs">{played} played</div>
-                <div className="text-gray-500 text-xs">{remaining} left</div>
+                <div className="text-white/20 font-bebas text-2xl font-bold">VS</div>
+                <div className="text-[#C9A227]/70 text-xs mt-1">{possiblePts}pts total</div>
+                <div className="text-white/30 text-xs">{played} played</div>
+                <div className="text-white/30 text-xs">{remaining} left</div>
               </div>
               <div className="text-center flex-1">
-                <div className="font-bebas font-black text-6xl text-red-600 leading-none drop-shadow-lg">{t2pts}</div>
-                <div className="font-bebas font-bold text-red-600 text-lg mt-1">{tData.teamNames.team2}</div>
-                {possiblePts>0&&<div className="text-xs text-gray-500 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
+                <div className="font-bebas font-black text-6xl text-red-200 leading-none drop-shadow-lg">{t2pts}</div>
+                <div className="font-bebas font-bold text-red-300 text-lg mt-1">{tData.teamNames.team2}</div>
+                {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
               </div>
             </div>
             <div className="relative mt-4 text-center">
-              <div className="text-xs text-blue-600 font-bold tracking-widest">WIN AT {toWin.toFixed(1)} POINTS</div>
+              <div className="text-xs text-[#C9A227]/60 font-bold tracking-widest">WIN AT {toWin.toFixed(1)} POINTS</div>
             </div>
           </div>
 
@@ -1649,57 +1781,57 @@ export default function GolfScoringApp() {
             const t1won = r.teamPoints.team1 > r.teamPoints.team2;
             const t2won = r.teamPoints.team2 > r.teamPoints.team1;
             return (
-              <Card key={i} className="p-4">
+              <div key={i} className="p-4 rounded-2xl card-dark">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-gray-900 text-sm">{FORMATS[m.format]?.name} · {m.startHole===1?'Front':'Back'} 9</div>
-                    <div className="text-xs text-gray-500">{new Date(r.completedAt).toLocaleDateString()}</div>
+                    <div className="font-bold text-white text-sm">{FORMATS[m.format]?.name} · {m.startHole===1?'Front':'Back'} 9</div>
+                    <div className="text-xs text-white/30">{new Date(r.completedAt).toLocaleDateString()}</div>
                   </div>
                   <div className="flex items-center gap-3 text-center">
                     <div>
                       <div className={`font-bebas font-black text-2xl ${t1won?'text-blue-600':'text-gray-400'}`}>{r.teamPoints.team1}</div>
                       <div className="text-xs text-blue-600">{tData.teamNames.team1}</div>
                     </div>
-                    <div className="text-gray-300 font-bold">–</div>
+                    <div className="text-white/20 font-bold">–</div>
                     <div>
                       <div className={`font-bebas font-black text-2xl ${t2won?'text-red-600':'text-gray-400'}`}>{r.teamPoints.team2}</div>
                       <div className="text-xs text-red-600">{tData.teamNames.team2}</div>
                     </div>
                   </div>
                 </div>
-              </Card>
-            );
+              </div>
+          );
           })}
 
           {/* MVP Race */}
           <Card className="p-4">
             <div className="flex items-center gap-2 mb-4">
               <Award className="w-5 h-5 text-yellow-600"/>
-              <h2 className="font-bebas font-bold text-gray-900 text-xl">MVP Race</h2>
+              <h2 className="font-bebas font-bold text-white text-xl">MVP Race</h2>
             </div>
             <div className="space-y-2">
               {contribs.map((p,i)=>{
                 const isTop = i===0;
                 const isT1 = tData.teams.team1.includes(p.id);
                 return (
-                  <div key={p.id} className={`p-3 rounded-xl border transition-all ${isTop?'border-yellow-400 bg-yellow-50':'border-gray-200 bg-gray-50'}`}>
+                  <div key={p.id} className={`p-3 rounded-xl border transition-all ${isTop?'border-yellow-500/50':'border-white/10'}`} style={{background:isTop?'rgba(201,162,39,0.12)':'rgba(255,255,255,0.04)'}}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="text-xl shrink-0">{i===0?'🏆':i===1?'🥈':i===2?'🥉':`${i+1}`}</span>
                         <div className="min-w-0">
-                          <div className={`font-bebas font-bold truncate ${isTop?'text-yellow-900':'text-gray-900'}`}>{p.name}</div>
+                          <div className={`font-bebas font-bold truncate ${isTop?'text-yellow-200':'text-white'}`}>{p.name}</div>
                           <div className={`text-xs ${isT1?'text-blue-600':'text-red-600'}`}>{isT1?tData.teamNames.team1:tData.teamNames.team2}</div>
                         </div>
                       </div>
                       <div className="flex gap-3 text-center text-xs shrink-0">
                         {([
-                          ['Pts', p.pts.toFixed(1), 'text-emerald-600'],
-                          ['Net↓', p.net, 'text-purple-600'],
-                          ['Skins', p.skins.toFixed(1), 'text-yellow-600'],
+                          ['Pts', p.pts.toFixed(1), 'text-emerald-400'],
+                          ['Net↓', p.net, 'text-purple-400'],
+                          ['Skins', p.skins.toFixed(1), 'text-yellow-400'],
                           ['W/P', `${p.stats?.matchesWon||0}/${p.stats?.matchesPlayed||0}`, 'text-blue-600'],
                         ] as const).map(([l,v,c])=>(
                           <div key={l}>
-                            <div className="text-gray-500 mb-0.5">{l}</div>
+                            <div className="text-white/30 mb-0.5">{l}</div>
                             <div className={`font-bold ${c}`}>{v}</div>
                           </div>
                         ))}
@@ -1708,7 +1840,7 @@ export default function GolfScoringApp() {
                   </div>
                 );
               })}
-              {!contribs.length&&<div className="text-center text-gray-400 py-8">No player data yet</div>}
+              {!contribs.length&&<div className="text-center text-white/30 py-8">No player data yet</div>}
             </div>
           </Card>
         </div>
