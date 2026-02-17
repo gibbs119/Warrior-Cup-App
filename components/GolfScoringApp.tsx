@@ -494,6 +494,7 @@ export default function GolfScoringApp() {
   const [viewingMatchId, setViewingMatchId]   = useState<string|null>(null);
   const [editingScores, setEditingScores]     = useState(false);
   const [expandedMatches, setExpandedMatches] = useState<Record<string,boolean>>({});
+  const [skinsPots, setSkinsPots] = useState<Record<string,number>>({});
   const toggleExpanded = (mid: string) => setExpandedMatches(prev=>({...prev,[mid]:!prev[mid]}));
   const [manualCourse, setManualCourse] = useState<Course>({id:'',name:'',location:'',tees:[blankTee()]});
   const unsubRef = useRef<(()=>void)|null>(null);
@@ -2003,9 +2004,6 @@ export default function GolfScoringApp() {
     const matches = tData.matches ?? [];
     const matchResults = tData.matchResults ?? [];
     
-    // State for units per course (stored as object keyed by courseId)
-    const [skinsPots, setSkinsPots] = useState<Record<string,number>>({});
-    
     // Calculate skins for each course
     const courseSkinsData = courses.map(course => {
       // Find all matches played on this course
@@ -2038,7 +2036,8 @@ export default function GolfScoringApp() {
       const skinsByPlayer: Record<string, number> = {}; // Track by individual player ID
       
       // Determine holes range for this course (1-9 or 1-18 depending on matches)
-      const maxHoles = Math.max(...completedCourseMatches.map(m => m.holes), 9);
+      const holesFromMatches = completedCourseMatches.map(m => m.holes);
+      const maxHoles = holesFromMatches.length > 0 ? Math.max(...holesFromMatches, 9) : 9;
       
       // For skins, we need to recalculate net scores using handicap strokes
       // Build a map of pairing -> player IDs and their combined handicap
@@ -2179,6 +2178,14 @@ export default function GolfScoringApp() {
                   />
                 </div>
               </div>
+              
+              {/* Empty State when no completed matches */}
+              {completedMatches === 0 && (
+                <div className="p-4 rounded-xl bg-white/5 text-center mb-4">
+                  <div className="text-white/40 text-sm">No completed matches yet</div>
+                  <div className="text-white/25 text-xs mt-1">Skins will appear once matches are scored</div>
+                </div>
+              )}
               
               {/* Units per Skin */}
               {potUnits > 0 && totalSkins > 0 && (
