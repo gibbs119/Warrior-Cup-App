@@ -540,9 +540,9 @@ export default function GolfScoringApp() {
     return () => { unsubRef.current?.(); };
   }, [tournId, activeMatchId]);
 
-  // Load all match scores for global skins calculation when entering scoring screen
+  // Load all match scores for global skins calculation when entering scoring or skins screen
   useEffect(() => {
-    if (screen === 'scoring' && tData?.matches?.length) {
+    if ((screen === 'scoring' || screen === 'skins') && tData?.matches?.length) {
       (async () => {
         const all = await loadAllMatchScores();
         setAllMatchScores(all);
@@ -2009,13 +2009,13 @@ export default function GolfScoringApp() {
       // Get all match results for this course
       const courseResults = matchResults.filter(r => courseMatches.some(m => m.id === r.matchId));
       
-      // Collect all scores from all matches on this course
+      // Collect all scores from allMatchScores for matches on this course
       const allScoresForCourse: Record<string, Record<number, { raw: number; net: number }>> = {};
-      courseResults.forEach(result => {
-        const match = courseMatches.find(m => m.id === result.matchId);
-        if (!match || !result.scores) return;
-        Object.entries(result.scores).forEach(([pairingKey, holeScores]) => {
-          const globalKey = `${result.matchId}__${pairingKey}`;
+      const completedMatchIdsOnCourse = courseResults.map(r => r.matchId);
+      Object.entries(allMatchScores).forEach(([matchId, matchScores]) => {
+        if (!completedMatchIdsOnCourse.includes(matchId)) return;
+        Object.entries(matchScores).forEach(([pairingKey, holeScores]) => {
+          const globalKey = `${matchId}__${pairingKey}`;
           allScoresForCourse[globalKey] = holeScores as Record<number, { raw: number; net: number }>;
         });
       });
