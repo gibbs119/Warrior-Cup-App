@@ -1616,31 +1616,30 @@ export default function GolfScoringApp() {
         <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
 
           {/* Championship Score Display */}
-          <div className="relative rounded-3xl overflow-hidden border border-white/10 p-6"
-            style={{background:'linear-gradient(135deg,rgba(30,64,175,0.3),rgba(0,0,0,0.4),rgba(185,28,28,0.3))'}}>
-            <div className="absolute inset-0 opacity-10 flex items-center justify-center">
-              <WarriorShield size={180}/>
+          <div className="relative rounded-3xl overflow-hidden border-2 border-white/20 p-6 bg-white/95 backdrop-blur">
+            <div className="absolute inset-0 opacity-5 flex items-center justify-center">
+              <div className="text-blue-600"><BlockW size={180}/></div>
             </div>
             <div className="relative flex items-center justify-between">
               <div className="text-center flex-1">
-                <div className="font-bebas font-black text-6xl text-blue-200 leading-none drop-shadow-lg">{t1pts}</div>
-                <div className="font-bebas font-bold text-blue-300 text-lg mt-1">{tData.teamNames.team1}</div>
-                {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
+                <div className="font-bebas font-black text-6xl text-blue-600 leading-none drop-shadow-lg">{t1pts}</div>
+                <div className="font-bebas font-bold text-blue-600 text-lg mt-1">{tData.teamNames.team1}</div>
+                {possiblePts>0&&<div className="text-xs text-gray-500 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
               </div>
               <div className="text-center px-4">
-                <div className="text-white/20 font-bebas text-2xl font-bold">VS</div>
-                <div className="text-yellow-400/70 text-xs mt-1">{possiblePts}pts total</div>
-                <div className="text-white/30 text-xs">{played} played</div>
-                <div className="text-white/30 text-xs">{remaining} left</div>
+                <div className="text-gray-400 font-bebas text-2xl font-bold">VS</div>
+                <div className="text-blue-600 text-xs mt-1">{possiblePts}pts total</div>
+                <div className="text-gray-500 text-xs">{played} played</div>
+                <div className="text-gray-500 text-xs">{remaining} left</div>
               </div>
               <div className="text-center flex-1">
-                <div className="font-bebas font-black text-6xl text-red-200 leading-none drop-shadow-lg">{t2pts}</div>
-                <div className="font-bebas font-bold text-red-300 text-lg mt-1">{tData.teamNames.team2}</div>
-                {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
+                <div className="font-bebas font-black text-6xl text-red-600 leading-none drop-shadow-lg">{t2pts}</div>
+                <div className="font-bebas font-bold text-red-600 text-lg mt-1">{tData.teamNames.team2}</div>
+                {possiblePts>0&&<div className="text-xs text-gray-500 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
               </div>
             </div>
             <div className="relative mt-4 text-center">
-              <div className="text-xs text-yellow-400/60 tracking-widest">WIN AT {toWin.toFixed(1)} POINTS</div>
+              <div className="text-xs text-blue-600 font-bold tracking-widest">WIN AT {toWin.toFixed(1)} POINTS</div>
             </div>
           </div>
 
@@ -1653,18 +1652,18 @@ export default function GolfScoringApp() {
               <Card key={i} className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-white text-sm">{FORMATS[m.format]?.name} · {m.startHole===1?'Front':'Back'} 9</div>
-                    <div className="text-xs text-white/30">{new Date(r.completedAt).toLocaleDateString()}</div>
+                    <div className="font-bold text-gray-900 text-sm">{FORMATS[m.format]?.name} · {m.startHole===1?'Front':'Back'} 9</div>
+                    <div className="text-xs text-gray-500">{new Date(r.completedAt).toLocaleDateString()}</div>
                   </div>
                   <div className="flex items-center gap-3 text-center">
                     <div>
-                      <div className={`font-bebas font-black text-2xl ${t1won?'text-blue-300':'text-white/40'}`}>{r.teamPoints.team1}</div>
-                      <div className="text-xs text-blue-300/60">{tData.teamNames.team1}</div>
+                      <div className={`font-bebas font-black text-2xl ${t1won?'text-blue-600':'text-gray-400'}`}>{r.teamPoints.team1}</div>
+                      <div className="text-xs text-blue-600">{tData.teamNames.team1}</div>
                     </div>
-                    <div className="text-white/20 font-bold">–</div>
+                    <div className="text-gray-300 font-bold">–</div>
                     <div>
-                      <div className={`font-bebas font-black text-2xl ${t2won?'text-red-300':'text-white/40'}`}>{r.teamPoints.team2}</div>
-                      <div className="text-xs text-red-300/60">{tData.teamNames.team2}</div>
+                      <div className={`font-bebas font-black text-2xl ${t2won?'text-red-600':'text-gray-400'}`}>{r.teamPoints.team2}</div>
+                      <div className="text-xs text-red-600">{tData.teamNames.team2}</div>
                     </div>
                   </div>
                 </div>
@@ -1675,33 +1674,32 @@ export default function GolfScoringApp() {
           {/* MVP Race */}
           <Card className="p-4">
             <div className="flex items-center gap-2 mb-4">
-              <Award className="w-5 h-5 text-yellow-400"/>
-              <h2 className="font-bebas font-bold text-white text-xl">MVP Race</h2>
+              <Award className="w-5 h-5 text-yellow-600"/>
+              <h2 className="font-bebas font-bold text-gray-900 text-xl">MVP Race</h2>
             </div>
             <div className="space-y-2">
               {contribs.map((p,i)=>{
                 const isTop = i===0;
                 const isT1 = tData.teams.team1.includes(p.id);
                 return (
-                  <div key={p.id} className={`p-3 rounded-xl border transition-all ${isTop?'border-yellow-500/50':'border-white/10'}`}
-                    style={{background:isTop?'rgba(201,162,39,0.12)':'rgba(255,255,255,0.04)'}}>
+                  <div key={p.id} className={`p-3 rounded-xl border transition-all ${isTop?'border-yellow-400 bg-yellow-50':'border-gray-200 bg-gray-50'}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="text-xl shrink-0">{i===0?'🏆':i===1?'🥈':i===2?'🥉':`${i+1}`}</span>
                         <div className="min-w-0">
-                          <div className={`font-bebas font-bold truncate ${isTop?'text-yellow-200':'text-white'}`}>{p.name}</div>
-                          <div className={`text-xs ${isT1?'text-blue-400':'text-red-400'}`}>{isT1?tData.teamNames.team1:tData.teamNames.team2}</div>
+                          <div className={`font-bebas font-bold truncate ${isTop?'text-yellow-900':'text-gray-900'}`}>{p.name}</div>
+                          <div className={`text-xs ${isT1?'text-blue-600':'text-red-600'}`}>{isT1?tData.teamNames.team1:tData.teamNames.team2}</div>
                         </div>
                       </div>
                       <div className="flex gap-3 text-center text-xs shrink-0">
                         {([
-                          ['Pts', p.pts.toFixed(1), 'text-emerald-400'],
-                          ['Net↓', p.net, 'text-purple-400'],
-                          ['Skins', p.skins.toFixed(1), 'text-yellow-400'],
-                          ['W/P', `${p.stats?.matchesWon||0}/${p.stats?.matchesPlayed||0}`, 'text-blue-400'],
+                          ['Pts', p.pts.toFixed(1), 'text-emerald-600'],
+                          ['Net↓', p.net, 'text-purple-600'],
+                          ['Skins', p.skins.toFixed(1), 'text-yellow-600'],
+                          ['W/P', `${p.stats?.matchesWon||0}/${p.stats?.matchesPlayed||0}`, 'text-blue-600'],
                         ] as const).map(([l,v,c])=>(
                           <div key={l}>
-                            <div className="text-white/30 mb-0.5">{l}</div>
+                            <div className="text-gray-500 mb-0.5">{l}</div>
                             <div className={`font-bold ${c}`}>{v}</div>
                           </div>
                         ))}
@@ -1710,7 +1708,7 @@ export default function GolfScoringApp() {
                   </div>
                 );
               })}
-              {!contribs.length&&<div className="text-center text-white/30 py-8">No player data yet</div>}
+              {!contribs.length&&<div className="text-center text-gray-400 py-8">No player data yet</div>}
             </div>
           </Card>
         </div>
