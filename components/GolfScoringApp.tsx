@@ -678,7 +678,7 @@ export default function GolfScoringApp() {
 
     // Best Ball - Individual player strokes based on 90% allowance
     if (m.format === 'bestball') {
-      const playerStrokes = bestBallStrokes(m, rank, tee, tData.players);
+      const playerStrokes = bestBallStrokes(m, rank, tee, tData?.players ?? []);
       
       const pairs = getMatchupPairs(m.format);
       const matchupResults = pairs.map(([a,b]) => {
@@ -1066,7 +1066,9 @@ export default function GolfScoringApp() {
   // ══════════════════════════════════════════════════════════════════════════════
   // ADMIN SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
-  if (screen==='admin') return (
+  if (screen==='admin') {
+    if (!tData) return <BG><TopBar title="Admin"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    return (
     <BG>
       <TopBar/>
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
@@ -1183,6 +1185,7 @@ export default function GolfScoringApp() {
       </div>
     </BG>
   );
+  }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // COURSE SEARCH / MANUAL ENTRY
@@ -1248,6 +1251,7 @@ export default function GolfScoringApp() {
   // TOURNAMENT SCHEDULE
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='tournament') {
+    if (!tData) return <BG><TopBar title="Tournament"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
     const players=tData.players??[];
     const t1pool=tData.teams.team1.map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[];
     const t2pool=tData.teams.team2.map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[];
@@ -1626,6 +1630,7 @@ export default function GolfScoringApp() {
   // SCORING SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='scoring') {
+    if (!tData) return <BG><TopBar title="Scoring"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
     const m=getMatch(activeMatchId);
     if (!m) return (
       <BG><div className="flex items-center justify-center min-h-[100dvh] p-8 text-center">
@@ -1868,6 +1873,7 @@ export default function GolfScoringApp() {
   // STANDINGS
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='standings') {
+    if (!tData) return <BG><TopBar title="Standings"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
     const players=tData.players??[];
     const contribs=[...players].map(p=>({
       ...p,
@@ -1992,6 +1998,7 @@ export default function GolfScoringApp() {
   // SKINS SCREEN - Per-course skins breakdown with pot calculation
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='skins') {
+    if (!tData) return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
     const courses = tData.courses ?? [];
     const matches = tData.matches ?? [];
     const matchResults = tData.matchResults ?? [];
@@ -2034,9 +2041,9 @@ export default function GolfScoringApp() {
       const pairingInfo: Record<string, { playerIds: string[]; handicap: number; format: string }> = {};
       courseMatches.forEach(match => {
         if (!match.pairings) return;
-        match.pairings.forEach((pairing, idx) => {
-          const globalKey = `${match.id}__p${idx + 1}`;
-          const playerHandicaps = pairing.map(pid => {
+        Object.entries(match.pairings).forEach(([pairingKey, playerIds]) => {
+          const globalKey = `${match.id}__${pairingKey}`;
+          const playerHandicaps = playerIds.map(pid => {
             const player = tData.players?.find(p => p.id === pid);
             return player?.handicap ?? 0;
           });
@@ -2044,7 +2051,7 @@ export default function GolfScoringApp() {
           const combinedHcp = playerHandicaps.reduce((a, b) => a + b, 0);
           const effectiveHcp = match.format === 'alternate' ? Math.round(combinedHcp * 0.5) : combinedHcp;
           pairingInfo[globalKey] = { 
-            playerIds: pairing, 
+            playerIds: playerIds, 
             handicap: effectiveHcp,
             format: match.format 
           };
