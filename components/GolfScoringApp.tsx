@@ -210,28 +210,38 @@ const calcMatchPts = (m: Match) => {
 
 const blankTee = (): Tee => ({name:'',slope:113,rating:72,par:72,holes:Array.from({length:18},(_,i)=>({h:i+1,par:4,yards:0,rank:i+1}))});
 
-// ─── Warrior Shield SVG Logo ──────────────────────────────────────────────────
-const WarriorShield = ({ size = 64, className = '' }: { size?: number; className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 80 90" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-    <path d="M40 4L72 18V48C72 65 40 86 40 86C40 86 8 65 8 48V18L40 4Z" fill="#1C3157" stroke="#C9A227" strokeWidth="2.5"/>
-    <path d="M40 12L64 24V48C64 61 40 78 40 78C40 78 16 61 16 48V24L40 12Z" fill="#152340"/>
-    {/* Golf flag */}
-    <line x1="40" y1="25" x2="40" y2="60" stroke="#C9A227" strokeWidth="2" strokeLinecap="round"/>
-    <path d="M40 25L52 31L40 37V25Z" fill="#C9A227"/>
-    {/* Golf ball */}
-    <circle cx="40" cy="64" r="6" fill="#C9A227"/>
-    <path d="M37 62Q40 60 43 62" stroke="#152340" strokeWidth="0.8" strokeLinecap="round"/>
-    <path d="M36 65Q40 63 44 65" stroke="#152340" strokeWidth="0.8" strokeLinecap="round"/>
-    {/* W initials */}
-    <text x="40" y="55" textAnchor="middle" fontSize="11" fontWeight="900" fill="#F5C842" fontFamily="Georgia,serif" letterSpacing="-0.5">W</text>
+// ─── Whitesboro Block W Logo ─────────────────────────────────────────────────
+const BlockW = ({ size = 64, className = '', showGolf = false }: { size?: number; className?: string; showGolf?: boolean }) => (
+  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    {/* Block W - Classic athletic style */}
+    <path d="M10 15 L20 15 L30 60 L40 30 L50 60 L60 30 L70 60 L80 15 L90 15 L90 20 L82 20 L72 70 L62 35 L52 70 L42 35 L32 70 L22 20 L10 20 Z" 
+      fill="currentColor" stroke="currentColor" strokeWidth="0.5"/>
+    {showGolf && (
+      <>
+        {/* Golf flag accent */}
+        <circle cx="85" cy="25" r="10" fill="#FFB81C" opacity="0.9"/>
+        <path d="M85 22L85 28M83 25L87 25" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+        <circle cx="85" cy="25" r="1.5" fill="white"/>
+      </>
+    )}
   </svg>
 );
 
-// ─── Theme Tokens ─────────────────────────────────────────────────────────────
-const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Lato:wght@300;400;700;900&display=swap');
+// ─── Script W'boro Logo ───────────────────────────────────────────────────────
+const ScriptWboro = ({ className = '' }: { className?: string }) => (
+  <div className={`font-script italic font-bold tracking-tight ${className}`} style={{fontFamily:"'Brush Script MT','Lucida Handwriting',cursive"}}>
+    W'boro
+  </div>
+);
+
+// ─── Theme Tokens: Whitesboro Royal Blue ─────────────────────────────────────
+// Royal Blue: #006BB6 (primary) | Navy: #003B73 (dark) | White: #FFFFFF
+// Athletic Gold: #FFB81C (accent) | Red: #C8102E (opponent)
+const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800;900&display=swap');
 * { -webkit-tap-highlight-color: transparent; }
-body { font-family: 'Lato', sans-serif; }
-.font-oswald { font-family: 'Oswald', sans-serif; }
+body { font-family: 'Inter', sans-serif; }
+.font-bebas { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.05em; }
+.font-script { font-family: 'Brush Script MT', 'Lucida Handwriting', cursive; }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 16px); }
 .safe-top { padding-top: env(safe-area-inset-top, 0px); }
 input, select, textarea { font-size: 16px !important; }
@@ -239,42 +249,47 @@ input, select, textarea { font-size: 16px !important; }
 
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 const BG = ({children}: {children: React.ReactNode}) => (
-  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#0B1628 0%,#0D1E38 40%,#0A1F2E 100%)'}}>
+  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(165deg,#004A7C 0%,#006BB6 35%,#0080D6 100%)'}}>
     <style>{FONTS}</style>
-    {/* Decorative background elements */}
+    {/* Retro athletic background elements */}
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
-      <div className="absolute -top-20 -right-20 w-96 h-96 rounded-full opacity-5" style={{background:'radial-gradient(circle,#C9A227,transparent 70%)'}}/>
-      <div className="absolute bottom-0 -left-20 w-80 h-80 rounded-full opacity-5" style={{background:'radial-gradient(circle,#1A5C34,transparent 70%)'}}/>
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full opacity-[0.02]"
-        style={{backgroundImage:'repeating-linear-gradient(45deg,#C9A227 0,#C9A227 1px,transparent 0,transparent 50%)',backgroundSize:'30px 30px'}}/>
+      {/* Diagonal stripes - classic 80s athletics */}
+      <div className="absolute inset-0 opacity-[0.03]"
+        style={{backgroundImage:'repeating-linear-gradient(45deg,#FFB81C 0,#FFB81C 2px,transparent 0,transparent 40px)'}}/> 
+      {/* Radial highlights */}
+      <div className="absolute -top-32 -right-32 w-[500px] h-[500px] rounded-full opacity-10" style={{background:'radial-gradient(circle,#FFB81C,transparent 65%)'}}/>
+      <div className="absolute bottom-0 -left-32 w-96 h-96 rounded-full opacity-10" style={{background:'radial-gradient(circle,white,transparent 65%)'}}/>
+      {/* Block W watermark */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.015]">
+        <BlockW size={400}/>
+      </div>
     </div>
     <div className="relative z-10">{children}</div>
   </div>
 );
 
-const Card = ({children, className='', gold=false, style}: {children: React.ReactNode; className?: string; gold?: boolean; style?: React.CSSProperties}) => (
-  <div className={`rounded-2xl border ${gold ? 'border-yellow-500/40 bg-yellow-950/20' : 'border-white/10 bg-white/5'} backdrop-blur-sm shadow-xl ${className}`}
-    style={style ?? (gold ? {background:'linear-gradient(135deg,rgba(201,162,39,0.12),rgba(201,162,39,0.05))'} : {background:'rgba(255,255,255,0.05)'})}>
+const Card = ({children, className='', blue=false}: {children: React.ReactNode; className?: string; blue?: boolean}) => (
+  <div className={`rounded-2xl border shadow-xl ${blue ? 'border-blue-400/30 bg-blue-900/40' : 'border-white/20 bg-white/95'} backdrop-blur-sm ${className}`}>
     {children}
   </div>
 );
 
-const Btn = ({onClick, children, color='gold', className='', disabled=false, sm=false}: {
+const Btn = ({onClick, children, color='blue', className='', disabled=false, sm=false}: {
   onClick?: ()=>void; children: React.ReactNode; color?: string; className?: string; disabled?: boolean; sm?: boolean;
 }) => {
   const C: Record<string,string> = {
-    gold: 'text-gray-900 font-bold shadow-lg hover:opacity-90 active:scale-95',
-    navy: 'bg-blue-800 hover:bg-blue-700 text-white border border-blue-600/50',
-    red:  'bg-red-700 hover:bg-red-600 text-white border border-red-600/50',
-    green:'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-600/50',
-    ghost:'bg-white/10 hover:bg-white/20 text-white border border-white/20',
+    blue:  'bg-[#006BB6] hover:bg-[#0080D6] text-white font-bold shadow-lg hover:shadow-xl active:scale-95 border border-blue-400/30',
+    gold:  'bg-[#FFB81C] hover:bg-[#FFC940] text-gray-900 font-black shadow-lg hover:shadow-xl active:scale-95',
+    navy:  'bg-[#003B73] hover:bg-[#004A7C] text-white border border-blue-700/50',
+    red:   'bg-[#C8102E] hover:bg-[#E01E3A] text-white border border-red-600/50',
+    green: 'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-600/50',
+    ghost: 'bg-white/10 hover:bg-white/20 text-white border border-white/20',
     orange:'bg-orange-600 hover:bg-orange-500 text-white border border-orange-500/50',
-    teal: 'bg-teal-700 hover:bg-teal-600 text-white border border-teal-600/50',
+    teal:  'bg-teal-700 hover:bg-teal-600 text-white border border-teal-600/50',
   };
-  const goldStyle = color === 'gold' ? {background:'linear-gradient(135deg,#D4A017,#F5C842,#C9A227)',boxShadow:'0 4px 20px rgba(201,162,39,0.4)'} : {};
   return (
-    <button onClick={onClick} disabled={disabled} style={goldStyle}
-      className={`${sm?'px-3 py-2 text-sm':'px-5 py-3'} rounded-xl font-semibold transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed ${C[color]??C.ghost} ${className}`}>
+    <button onClick={onClick} disabled={disabled}
+      className={`${sm?'px-3 py-2 text-sm':'px-5 py-3'} rounded-xl font-bold transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed ${C[color]??C.blue} ${className}`}>
       {children}
     </button>
   );
@@ -285,10 +300,9 @@ const Inp = ({label, value, onChange, type='text', placeholder='', className='',
   type?: string; placeholder?: string; className?: string; onKeyDown?: (e:React.KeyboardEvent)=>void;
 }) => (
   <div className={className}>
-    {label && <label className="block text-xs font-bold text-yellow-400/80 mb-1.5 tracking-wider uppercase">{label}</label>}
+    {label && <label className="block text-xs font-bold text-blue-600 mb-1.5 tracking-wide uppercase">{label}</label>}
     <input type={type} value={value??''} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onKeyDown={onKeyDown}
-      className="w-full px-4 py-3 rounded-xl outline-none text-white placeholder-white/30 transition-all border border-white/10 focus:border-yellow-500/60 focus:ring-1 focus:ring-yellow-500/30"
-      style={{background:'rgba(255,255,255,0.07)'}}/>
+      className="w-full px-4 py-3 rounded-xl outline-none text-gray-900 placeholder-gray-400 transition-all border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 bg-white"/>
   </div>
 );
 
@@ -297,10 +311,9 @@ const Sel = ({label, value, onChange, options, className=''}: {
   options: {value: string|number; label: string}[]; className?: string;
 }) => (
   <div className={className}>
-    {label && <label className="block text-xs font-bold text-yellow-400/80 mb-1.5 tracking-wider uppercase">{label}</label>}
+    {label && <label className="block text-xs font-bold text-blue-600 mb-1.5 tracking-wide uppercase">{label}</label>}
     <select value={value} onChange={e=>onChange(e.target.value)}
-      className="w-full px-4 py-3 rounded-xl outline-none text-white border border-white/10 focus:border-yellow-500/60 appearance-none"
-      style={{background:'rgba(20,30,55,0.9)'}}>
+      className="w-full px-4 py-3 rounded-xl outline-none text-gray-900 border-2 border-gray-200 focus:border-blue-500 bg-white appearance-none">
       {options.map(o=><option key={String(o.value)} value={o.value}>{o.label}</option>)}
     </select>
   </div>
@@ -308,13 +321,13 @@ const Sel = ({label, value, onChange, options, className=''}: {
 
 const Badge = ({children, color='gray'}: {children: React.ReactNode; color?: string}) => {
   const C: Record<string,string> = {
-    green:'bg-emerald-900/60 text-emerald-300 border-emerald-700/50',
-    blue:'bg-blue-900/60 text-blue-300 border-blue-700/50',
-    red:'bg-red-900/60 text-red-300 border-red-700/50',
-    gray:'bg-white/10 text-white/60 border-white/10',
-    orange:'bg-orange-900/60 text-orange-300 border-orange-700/50',
-    purple:'bg-purple-900/60 text-purple-300 border-purple-700/50',
-    gold:'bg-yellow-900/50 text-yellow-300 border-yellow-600/50',
+    green: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    blue:  'bg-blue-100 text-blue-800 border-blue-300',
+    red:   'bg-red-100 text-red-800 border-red-300',
+    gray:  'bg-gray-100 text-gray-600 border-gray-300',
+    orange:'bg-orange-100 text-orange-800 border-orange-300',
+    purple:'bg-purple-100 text-purple-800 border-purple-300',
+    gold:  'bg-yellow-100 text-yellow-800 border-yellow-300',
   };
   return <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border ${C[color]??C.gray}`}>{children}</span>;
 };
@@ -674,19 +687,19 @@ export default function GolfScoringApp() {
 
   // ── Top Navigation Bar ────────────────────────────────────────────────────────
   const TopBar = ({title,back}:{title?:string;back?:()=>void}) => (
-    <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/10" style={{background:'rgba(0,0,0,0.3)'}}>
+    <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/20 bg-white/95 backdrop-blur-sm">
       <div className="flex items-center gap-3 min-w-0">
         {back ? (
-          <button onClick={back} className="flex items-center gap-1 text-yellow-400 text-sm font-semibold shrink-0">
+          <button onClick={back} className="flex items-center gap-1 text-blue-600 text-sm font-bold shrink-0">
             <ChevronLeft className="w-4 h-4"/>Back
           </button>
         ) : (
-          <WarriorShield size={36} className="shrink-0"/>
+          <div className="text-[#006BB6] shrink-0"><BlockW size={36}/></div>
         )}
         <div className="min-w-0">
-          <h1 className="font-oswald font-bold text-white text-lg leading-tight truncate">{title ?? tData?.name}</h1>
+          <h1 className="font-bebas font-bold text-gray-900 text-lg leading-tight truncate">{title ?? tData?.name}</h1>
           {tee && !title && (
-            <div className="text-xs text-white/40 truncate">
+            <div className="text-xs text-gray-500 truncate">
               {(tData?.courses??[]).find(c=>c.id===tData?.activeCourseId)?.name??''} · {tee.name} · Slope {tee.slope}
             </div>
           )}
@@ -695,15 +708,15 @@ export default function GolfScoringApp() {
       <div className="flex gap-2 items-center shrink-0">
         <Badge color={role==='admin'?'gold':'blue'}>{role==='admin'?'Admin':'Player'}</Badge>
         {role==='admin'&&screen!=='admin'&&(
-          <button onClick={()=>setScreen('admin')} className="text-white/50 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">⚙</button>
+          <button onClick={()=>setScreen('admin')} className="text-gray-600 hover:text-gray-900 text-xs px-2 py-1.5 rounded-lg border border-gray-300 hover:border-gray-400">⚙</button>
         )}
         {screen!=='standings'&&(
-          <button onClick={()=>setScreen('standings')} className="text-white/50 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">📊</button>
+          <button onClick={()=>setScreen('standings')} className="text-gray-600 hover:text-gray-900 text-xs px-2 py-1.5 rounded-lg border border-gray-300 hover:border-gray-400">📊</button>
         )}
         {screen!=='tournament'&&(
-          <button onClick={()=>setScreen('tournament')} className="text-white/50 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">📅</button>
+          <button onClick={()=>setScreen('tournament')} className="text-gray-600 hover:text-gray-900 text-xs px-2 py-1.5 rounded-lg border border-gray-300 hover:border-gray-400">📅</button>
         )}
-        <button onClick={logout} className="text-white/40 hover:text-red-400 p-1.5 rounded-lg border border-white/10 hover:border-red-400/30">
+        <button onClick={logout} className="text-gray-400 hover:text-red-600 p-1.5 rounded-lg border border-gray-300 hover:border-red-400">
           <LogOut className="w-3.5 h-3.5"/>
         </button>
       </div>
@@ -716,23 +729,34 @@ export default function GolfScoringApp() {
   if (screen==='login') return (
     <BG>
       <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5 safe-top safe-bottom">
-        {/* Hero Header */}
+        {/* Hero Header - Whitesboro Warriors */}
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
+          <div className="flex justify-center mb-6">
             <div className="relative">
-              <div className="absolute inset-0 rounded-full blur-2xl opacity-40" style={{background:'radial-gradient(circle,#C9A227,transparent 70%)'}}/>
-              <WarriorShield size={88} className="relative z-10"/>
+              {/* Glow effect */}
+              <div className="absolute inset-0 rounded-full blur-3xl opacity-30" style={{background:'radial-gradient(circle,#FFB81C,transparent 70%)'}}/>
+              {/* Block W logo */}
+              <div className="relative z-10 text-white">
+                <BlockW size={110} showGolf/>
+              </div>
             </div>
           </div>
-          <h1 className="font-oswald font-bold text-white mb-1" style={{fontSize:'clamp(2rem,8vw,3rem)',letterSpacing:'0.05em',textShadow:'0 0 30px rgba(201,162,39,0.5)'}}>
+          
+          {/* WARRIOR CUP title in Bebas Neue */}
+          <h1 className="font-bebas font-bold text-white mb-2" style={{fontSize:'clamp(2.5rem,9vw,4rem)',lineHeight:'0.9',textShadow:'0 4px 20px rgba(0,0,0,0.3)'}}>
             WARRIOR CUP
           </h1>
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <div className="h-px w-8 bg-yellow-600/60"/>
-            <span className="text-yellow-500/80 text-xs font-bold tracking-widest uppercase">Whitesboro Warriors</span>
-            <div className="h-px w-8 bg-yellow-600/60"/>
+          
+          {/* Script W'boro */}
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <div className="h-px w-12 bg-white/40"/>
+            <ScriptWboro className="text-white text-3xl opacity-90"/>
+            <div className="h-px w-12 bg-white/40"/>
           </div>
-          <p className="text-white/40 text-xs tracking-wider">MARCY, NY · RYDER CUP STYLE</p>
+          
+          {/* Whitesboro Warriors subtitle */}
+          <div className="text-white/90 text-sm font-bold tracking-widest mb-1">WHITESBORO WARRIORS</div>
+          <div className="text-white/50 text-xs tracking-wider">MARCY, NY · RYDER CUP STYLE GOLF</div>
         </div>
 
         <div className="w-full max-w-sm space-y-3">
@@ -741,15 +765,15 @@ export default function GolfScoringApp() {
             <Inp label="Tournament ID" value={tournId} onChange={v=>setTournId(v.toUpperCase())} placeholder="e.g. ABC123" onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
             <Inp label="Passcode" value={passcode} onChange={setPasscode} placeholder="Enter passcode" onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
             {loginErr && (
-              <div className="text-sm text-red-300 font-semibold bg-red-950/60 border border-red-700/40 p-3 rounded-xl">
+              <div className="text-sm text-red-700 font-semibold bg-red-50 border border-red-300 p-3 rounded-xl">
                 ⚠ {loginErr}
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
-              <Btn color="navy" onClick={()=>joinTournament(false)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
+              <Btn color="blue" onClick={()=>joinTournament(false)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
                 <Users className="w-4 h-4"/><span>Player</span>
               </Btn>
-              <Btn color="ghost" onClick={()=>joinTournament(true)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
+              <Btn color="navy" onClick={()=>joinTournament(true)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
                 <Lock className="w-4 h-4"/><span>Admin</span>
               </Btn>
             </div>
@@ -757,15 +781,15 @@ export default function GolfScoringApp() {
 
           {/* Create New */}
           <div className="text-center">
-            <div className="text-white/30 text-xs mb-3 tracking-wider">— START A NEW TOURNAMENT —</div>
+            <div className="text-white/40 text-xs mb-3 tracking-widest">— START A NEW TOURNAMENT —</div>
             <Btn color="gold" onClick={createTournament} disabled={loading} className="w-full flex items-center justify-center gap-2 py-4">
               <Trophy className="w-5 h-5"/>
-              <span className="font-oswald text-lg tracking-wide">Create Warrior Cup</span>
+              <span className="font-bebas text-xl tracking-wider">Create Warrior Cup</span>
             </Btn>
           </div>
 
-          {/* Golf ball decoration */}
-          <div className="text-center text-white/10 text-4xl pt-2 select-none">⛳</div>
+          {/* Go Blue tagline */}
+          <div className="text-center text-white/30 text-xs pt-2 font-bold tracking-widest">GO BLUE</div>
         </div>
       </div>
     </BG>
@@ -775,8 +799,8 @@ export default function GolfScoringApp() {
     <BG>
       <div className="flex items-center justify-center min-h-[100dvh]">
         <div className="text-center">
-          <WarriorShield size={56} className="mx-auto mb-4 opacity-60"/>
-          <div className="text-white/50 text-lg font-oswald tracking-wide">Loading…</div>
+          <div className="text-white mb-4"><BlockW size={56}/></div>
+          <div className="text-white/70 text-lg font-bebas tracking-wide">Loading Tournament…</div>
         </div>
       </div>
     </BG>
@@ -791,19 +815,19 @@ export default function GolfScoringApp() {
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
 
         {/* Share Codes */}
-        <Card gold className="p-4">
-          <div className="text-xs font-bold text-yellow-400/80 mb-3 tracking-widest uppercase flex items-center gap-2">
-            <Shield className="w-3.5 h-3.5"/>Share With Your Group
+        <Card blue className="p-4">
+          <div className="text-xs font-bold text-blue-200 mb-3 tracking-widest uppercase flex items-center gap-2">
+            <Shield className="w-3.5 h-3.5"/>Tournament Access Codes
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             {[
-              {label:'Tournament ID', value:tData.id, color:'text-yellow-300'},
-              {label:'Player Code', value:tData.passcode, color:'text-blue-300'},
-              {label:'Admin Code', value:tData.adminPasscode, color:'text-orange-300'},
+              {label:'Tournament ID', value:tData.id, color:'text-white'},
+              {label:'Player Code', value:tData.passcode, color:'text-blue-200'},
+              {label:'Admin Code', value:tData.adminPasscode, color:'text-yellow-200'},
             ].map(({label,value,color})=>(
-              <div key={label} className="bg-black/20 rounded-xl p-3">
-                <div className="text-xs text-white/40 mb-1">{label}</div>
-                <div className={`font-oswald font-bold text-xl ${color}`}>{value}</div>
+              <div key={label} className="bg-white/10 rounded-xl p-3 backdrop-blur">
+                <div className="text-xs text-white/60 mb-1">{label}</div>
+                <div className={`font-bebas font-bold text-xl ${color}`}>{value}</div>
               </div>
             ))}
           </div>
@@ -811,22 +835,19 @@ export default function GolfScoringApp() {
 
         {/* Tournament Name */}
         <Card className="p-4">
-          <label className="text-xs font-bold text-yellow-400/80 mb-2 block tracking-widest uppercase">Tournament Name</label>
+          <label className="text-xs font-bold text-blue-600 mb-2 block tracking-wide uppercase">Tournament Name</label>
           <input value={tData.name} onChange={e=>updateTournament(d=>({...d,name:e.target.value}))}
-            className="w-full px-4 py-3 rounded-xl text-white font-oswald font-bold text-lg border border-white/10 focus:border-yellow-500/60 outline-none"
-            style={{background:'rgba(255,255,255,0.07)'}}/>
+            className="w-full px-4 py-3 rounded-xl text-gray-900 font-bebas font-bold text-lg border-2 border-gray-200 focus:border-blue-500 outline-none bg-white"/>
         </Card>
 
         {/* Teams */}
         <div className="grid grid-cols-2 gap-3">
           {(['team1','team2'] as const).map(key=>(
-            <Card key={key} className={`p-4 border ${key==='team1'?'border-blue-500/30':'border-red-500/30'}`}
-              style={{background:key==='team1'?'rgba(30,64,175,0.15)':'rgba(185,28,28,0.15)'}}>
-              <div className="text-xs text-white/40 mb-2">{key==='team1'?'Team 1':'Team 2'}</div>
+            <Card key={key} className={`p-4`}>
+              <div className="text-xs text-gray-500 mb-2 font-bold uppercase">{key==='team1'?'Team 1':'Team 2'}</div>
               <input value={tData.teamNames[key]} onChange={e=>updateTournament(d=>({...d,teamNames:{...d.teamNames,[key]:e.target.value}}))}
-                className={`w-full px-2 py-1.5 rounded-xl font-oswald font-bold text-base border outline-none ${key==='team1'?'text-blue-300 border-blue-500/30':'text-red-300 border-red-500/30'}`}
-                style={{background:'rgba(255,255,255,0.05)'}}/>
-              <div className="text-xs text-white/30 mt-2">{tData.teams[key].length}/4 players</div>
+                className={`w-full px-2 py-1.5 rounded-xl font-bebas font-bold text-base border-2 outline-none ${key==='team1'?'text-blue-600 border-blue-300':'text-red-600 border-red-300'} bg-white`}/>
+              <div className="text-xs text-gray-400 mt-2">{tData.teams[key].length}/4 players</div>
             </Card>
           ))}
         </div>
@@ -834,51 +855,50 @@ export default function GolfScoringApp() {
         {/* Players */}
         <Card className="p-4">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-oswald font-bold text-white text-lg">Players</h2>
+            <h2 className="font-bebas font-bold text-gray-900 text-lg">Players</h2>
             <Btn color="green" sm onClick={()=>updateTournament(d=>({...d,players:[...d.players,{id:'p'+Date.now(),name:'New Player',handicapIndex:0,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}}]}))}>
               <span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add</span>
             </Btn>
           </div>
           <div className="space-y-2">
             {(tData.players??[]).map(p=>(
-              <div key={p.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-white/10 flex-wrap" style={{background:'rgba(255,255,255,0.04)'}}>
+              <div key={p.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-gray-200 flex-wrap bg-gray-50">
                 <input value={p.name} onChange={e=>updateTournament(d=>({...d,players:d.players.map(x=>x.id===p.id?{...x,name:e.target.value}:x)}))}
-                  className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-white text-sm font-bold border border-white/10 outline-none" style={{background:'rgba(255,255,255,0.07)',minWidth:'80px'}}/>
-                <span className="text-white/30 text-xs">HI:</span>
+                  className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-gray-900 text-sm font-bold border border-gray-300 outline-none bg-white" style={{minWidth:'80px'}}/>
+                <span className="text-gray-500 text-xs">HI:</span>
                 <input type="number" value={p.handicapIndex} onChange={e=>updateTournament(d=>({...d,players:d.players.map(x=>x.id===p.id?{...x,handicapIndex:parseFloat(e.target.value)||0}:x)}))}
-                  className="w-14 px-2 py-1.5 rounded-lg text-white text-sm text-center border border-white/10 outline-none" style={{background:'rgba(255,255,255,0.07)'}}/>
-                {tee&&<span className="text-xs text-yellow-400 font-bold">HC {courseHcp(p.handicapIndex,tee.slope)}</span>}
+                  className="w-14 px-2 py-1.5 rounded-lg text-gray-900 text-sm text-center border border-gray-300 outline-none bg-white"/>
+                {tee&&<span className="text-xs text-blue-600 font-bold">HC {courseHcp(p.handicapIndex,tee.slope)}</span>}
                 <button onClick={()=>updateTournament(d=>({...d,teams:{team1:d.teams.team1.includes(p.id)?d.teams.team1.filter(x=>x!==p.id):[...d.teams.team1.filter(x=>x!==p.id),p.id],team2:d.teams.team2.filter(x=>x!==p.id)}}))}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team1.includes(p.id)?'bg-blue-600 text-white border-blue-500':'border-white/10 text-white/40 hover:border-blue-500/50'}`}>{tData.teamNames.team1}</button>
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team1.includes(p.id)?'bg-blue-600 text-white border-blue-500':'border-gray-300 text-gray-600 hover:border-blue-500'}`}>{tData.teamNames.team1}</button>
                 <button onClick={()=>updateTournament(d=>({...d,teams:{team2:d.teams.team2.includes(p.id)?d.teams.team2.filter(x=>x!==p.id):[...d.teams.team2.filter(x=>x!==p.id),p.id],team1:d.teams.team1.filter(x=>x!==p.id)}}))}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team2.includes(p.id)?'bg-red-600 text-white border-red-500':'border-white/10 text-white/40 hover:border-red-500/50'}`}>{tData.teamNames.team2}</button>
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team2.includes(p.id)?'bg-red-600 text-white border-red-500':'border-gray-300 text-gray-600 hover:border-red-500'}`}>{tData.teamNames.team2}</button>
                 <button onClick={()=>updateTournament(d=>({...d,players:d.players.filter(x=>x.id!==p.id),teams:{team1:d.teams.team1.filter(x=>x!==p.id),team2:d.teams.team2.filter(x=>x!==p.id)}}))}
-                  className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>
+                  className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5"/></button>
               </div>
             ))}
-            {!tData.players?.length&&<div className="text-center text-white/30 py-6">No players yet</div>}
+            {!tData.players?.length&&<div className="text-center text-gray-400 py-6">No players yet</div>}
           </div>
         </Card>
 
         {/* Courses */}
         <Card className="p-4">
           <div className="flex items-center justify-between mb-1">
-            <h2 className="font-oswald font-bold text-white text-lg">Courses & Tees</h2>
+            <h2 className="font-bebas font-bold text-gray-900 text-lg">Courses & Tees</h2>
             <Btn color="teal" sm onClick={()=>setScreen('courseSearch')}>
               <span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add Course</span>
             </Btn>
           </div>
-          <p className="text-xs text-white/30 mb-4">Default tee shown. Each match can override independently.</p>
+          <p className="text-xs text-gray-500 mb-4">Default tee shown. Each match can override independently.</p>
           {(tData.courses??[]).map(c=>(
-            <div key={c.id} className={`mb-3 p-3 rounded-xl border-2 transition-all ${tData.activeCourseId===c.id?'border-yellow-500/50':'border-white/10'}`}
-              style={{background:tData.activeCourseId===c.id?'rgba(201,162,39,0.08)':'rgba(255,255,255,0.03)'}}>
+            <div key={c.id} className={`mb-3 p-3 rounded-xl border-2 transition-all ${tData.activeCourseId===c.id?'border-blue-500 bg-blue-50':'border-gray-200 bg-gray-50'}`}>
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <div className="font-bold text-white text-sm">{c.name}</div>
-                  {c.location&&<div className="text-xs text-white/30">{c.location}</div>}
+                  <div className="font-bold text-gray-900 text-sm">{c.name}</div>
+                  {c.location&&<div className="text-xs text-gray-500">{c.location}</div>}
                 </div>
                 <button onClick={()=>updateTournament(d=>({...d,courses:d.courses.filter(x=>x.id!==c.id)}))}
-                  className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3 h-3"/></button>
+                  className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-3 h-3"/></button>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {c.tees.map(t=>{
@@ -886,8 +906,7 @@ export default function GolfScoringApp() {
                   const isActive = tData.activeCourseId===c.id && tData.activeTeeId===t.name;
                   return (
                     <button key={t.name} onClick={()=>updateTournament(d=>({...d,activeCourseId:c.id,activeTeeId:t.name}))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isActive?'border-yellow-500 text-yellow-300':'border-white/10 text-white/50 hover:border-white/30'}`}
-                      style={{background:isActive?'rgba(201,162,39,0.2)':'rgba(255,255,255,0.04)'}}>
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${isActive?'border-blue-500 bg-blue-600 text-white':'border-gray-300 bg-white text-gray-600 hover:border-blue-400'}`}>
                       {t.name} · {t.slope}/{t.rating} · P{t.par}
                     </button>
                   );
@@ -899,7 +918,7 @@ export default function GolfScoringApp() {
 
         <Btn color="gold" onClick={()=>setScreen('tournament')} className="w-full flex items-center justify-center gap-2 py-4">
           <Flag className="w-5 h-5"/>
-          <span className="font-oswald text-lg tracking-wide">Plan Matches →</span>
+          <span className="font-bebas text-lg tracking-wide">Plan Matches →</span>
         </Btn>
       </div>
     </BG>
@@ -921,7 +940,7 @@ export default function GolfScoringApp() {
           {manualCourse.tees.map((t,ti)=>(
             <div key={ti} className="mb-4 p-4 rounded-xl border border-blue-500/30" style={{background:'rgba(30,64,175,0.1)'}}>
               <div className="flex items-center justify-between mb-3">
-                <span className="font-oswald font-bold text-blue-300">Tee {ti+1}: {t.name||'(unnamed)'}</span>
+                <span className="font-bebas font-bold text-blue-300">Tee {ti+1}: {t.name||'(unnamed)'}</span>
                 {manualCourse.tees.length>1&&<button onClick={()=>setManualCourse(c=>({...c,tees:c.tees.filter((_,i)=>i!==ti)}))} className="text-xs text-red-400 font-semibold">Remove</button>}
               </div>
               <div className="grid grid-cols-4 gap-2 mb-3">
@@ -958,7 +977,7 @@ export default function GolfScoringApp() {
           </button>
           <Btn color="gold" disabled={!manualCourse.name.trim()} onClick={()=>addCourse({...manualCourse,id:'m'+Date.now()})} className="w-full flex items-center justify-center gap-2 py-4">
             <Check className="w-5 h-5"/>
-            <span className="font-oswald text-lg">Add Course to Tournament</span>
+            <span className="font-bebas text-lg">Add Course to Tournament</span>
           </Btn>
         </Card>
       </div>
@@ -1059,7 +1078,7 @@ export default function GolfScoringApp() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className="font-oswald font-bold text-white">{fmt.name}</span>
+                <span className="font-bebas font-bold text-white">{fmt.name}</span>
                 <Badge color={m.startHole===1?'blue':'purple'}>{m.startHole===1?'Front 9':'Back 9'}</Badge>
                 <Badge color="gray">{m.holes}H</Badge>
                 <Badge color="gold">{totalPts}pts</Badge>
@@ -1172,7 +1191,7 @@ export default function GolfScoringApp() {
       const pts = fmt.pointsPerMatchup * fmt.numMatchups * (f.holes===18?2:1);
       return (
         <div className="p-4 rounded-2xl border border-yellow-500/30" style={{background:'rgba(201,162,39,0.08)'}}>
-          <div className="font-oswald font-bold text-yellow-300 mb-3 text-lg">New Match</div>
+          <div className="font-bebas font-bold text-yellow-300 mb-3 text-lg">New Match</div>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Sel label="Format" value={f.format} onChange={v=>setF(x=>({...x,format:v}))}
               options={Object.entries(FORMATS).map(([k,v])=>({value:k,label:v.name}))}/>
@@ -1210,17 +1229,17 @@ export default function GolfScoringApp() {
           {/* Scoreboard */}
           <div className="grid grid-cols-3 gap-3">
             <Card className="p-4 text-center border border-blue-500/30" style={{background:'rgba(30,64,175,0.2)'}}>
-              <div className="font-oswald font-bold text-blue-300 text-5xl leading-none">{t1pts}</div>
+              <div className="font-bebas font-bold text-blue-300 text-5xl leading-none">{t1pts}</div>
               <div className="font-bold text-blue-300 text-sm mt-1 truncate">{tData.teamNames.team1}</div>
               {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
             </Card>
             <Card className="p-4 text-center flex flex-col justify-center">
               <div className="text-white/30 text-xs font-bold tracking-widest uppercase mb-1">Total</div>
-              <div className="font-oswald font-bold text-white text-2xl">{possiblePts}</div>
+              <div className="font-bebas font-bold text-white text-2xl">{possiblePts}</div>
               <div className="text-xs text-yellow-400/70">Win at {toWin.toFixed(1)}</div>
             </Card>
             <Card className="p-4 text-center border border-red-500/30" style={{background:'rgba(185,28,28,0.2)'}}>
-              <div className="font-oswald font-bold text-red-300 text-5xl leading-none">{t2pts}</div>
+              <div className="font-bebas font-bold text-red-300 text-5xl leading-none">{t2pts}</div>
               <div className="font-bold text-red-300 text-sm mt-1 truncate">{tData.teamNames.team2}</div>
               {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
             </Card>
@@ -1229,7 +1248,7 @@ export default function GolfScoringApp() {
           {/* Matches */}
           <Card className="p-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-oswald font-bold text-white text-xl">Match Schedule</h2>
+              <h2 className="font-bebas font-bold text-white text-xl">Match Schedule</h2>
               {role==='admin'&&<Btn color="green" sm onClick={()=>setShowMatchBuilder(true)} disabled={showMatchBuilder}><span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add Match</span></Btn>}
             </div>
             {showMatchBuilder&&role==='admin'&&<div className="mb-4"><AddMatchForm/></div>}
@@ -1259,16 +1278,16 @@ export default function GolfScoringApp() {
                   <div className="w-full sm:max-w-4xl rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto" style={{background:'#0D1B2A',border:'1px solid rgba(255,255,255,0.1)'}} onClick={e=>e.stopPropagation()}>
                     <div className="p-4 border-b border-white/10 sticky top-0 flex items-center justify-between" style={{background:'#0D1B2A'}}>
                       <div>
-                        <div className="font-oswald font-bold text-white text-lg">{vfmt.name} · {vm.startHole===1?'Front':'Back'} 9</div>
+                        <div className="font-bebas font-bold text-white text-lg">{vfmt.name} · {vm.startHole===1?'Front':'Back'} 9</div>
                         <div className="text-xs text-white/30">{tData.courses.find(c=>c.id===(vm.courseId??tData.activeCourseId))?.name} · {vtee?.name} Tees</div>
                       </div>
                       <button onClick={()=>setViewingMatchId(null)} className="text-white/40 hover:text-white text-2xl leading-none">✕</button>
                     </div>
                     {vresult&&(
                       <div className="px-4 py-3 border-b border-white/10 flex gap-8 justify-center text-center">
-                        <div><div className="font-oswald font-bold text-3xl text-blue-300">{vresult.teamPoints.team1}</div><div className="text-xs text-blue-300/60">{tData.teamNames.team1}</div></div>
+                        <div><div className="font-bebas font-bold text-3xl text-blue-300">{vresult.teamPoints.team1}</div><div className="text-xs text-blue-300/60">{tData.teamNames.team1}</div></div>
                         <div className="text-white/20 text-3xl self-center">/</div>
-                        <div><div className="font-oswald font-bold text-3xl text-red-300">{vresult.teamPoints.team2}</div><div className="text-xs text-red-300/60">{tData.teamNames.team2}</div></div>
+                        <div><div className="font-bebas font-bold text-3xl text-red-300">{vresult.teamPoints.team2}</div><div className="text-xs text-red-300/60">{tData.teamNames.team2}</div></div>
                       </div>
                     )}
                     <div className="p-4 overflow-x-auto">
@@ -1329,7 +1348,7 @@ export default function GolfScoringApp() {
                             const bg=wins.t1>wins.t2?'bg-blue-600 text-white':wins.t2>wins.t1?'bg-red-600 text-white':'bg-white/10 text-white/40';
                             return (
                               <div key={h} className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold ${bg}`}>
-                                <div className="text-base font-oswald font-bold">{ah}</div>
+                                <div className="text-base font-bebas font-bold">{ah}</div>
                                 <div className="text-xs opacity-75">{wins.t1>wins.t2?tData.teamNames.team1.slice(0,1):wins.t2>wins.t1?tData.teamNames.team2.slice(0,1):'—'}</div>
                               </div>
                             );
@@ -1395,7 +1414,7 @@ export default function GolfScoringApp() {
           style={{background:isT1?'rgba(30,64,175,0.15)':'rgba(185,28,28,0.15)'}}>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className={`font-oswald font-bold text-lg ${isT1?'text-blue-200':'text-red-200'}`}>
+              <div className={`font-bebas font-bold text-lg ${isT1?'text-blue-200':'text-red-200'}`}>
                 {names.join(' & ')}
                 {!fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm">{'★'.repeat(myStrokes)}</span>}
               </div>
@@ -1406,7 +1425,7 @@ export default function GolfScoringApp() {
               </div>
             </div>
             {teamScore!=null&&(
-              <div className={`font-oswald font-black text-4xl ${isT1?'text-blue-200':'text-red-200'}`}>{teamScore}</div>
+              <div className={`font-bebas font-black text-4xl ${isT1?'text-blue-200':'text-red-200'}`}>{teamScore}</div>
             )}
           </div>
           {isScramble?(
@@ -1419,7 +1438,7 @@ export default function GolfScoringApp() {
                   const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                   return (
                     <button key={n} onClick={()=>ids.forEach(id=>setScore(id,currentHole,n))}
-                      className={`w-12 h-12 rounded-xl font-oswald font-bold text-lg border-2 transition-all ${teamScore===n?'border-yellow-400 scale-110':'border-white/10 hover:border-white/30'} ${relColor}`}
+                      className={`w-12 h-12 rounded-xl font-bebas font-bold text-lg border-2 transition-all ${teamScore===n?'border-yellow-400 scale-110':'border-white/10 hover:border-white/30'} ${relColor}`}
                       style={{background:teamScore===n?'rgba(201,162,39,0.3)':'rgba(255,255,255,0.07)'}}>
                       {n}
                     </button>
@@ -1442,7 +1461,7 @@ export default function GolfScoringApp() {
                         const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                         return (
                           <button key={n} onClick={()=>setScore(id,currentHole,n)}
-                            className={`w-11 h-11 rounded-xl font-oswald font-bold text-base border-2 transition-all ${sc===n?'border-yellow-400 scale-110':'border-white/10 hover:border-white/30'} ${relColor}`}
+                            className={`w-11 h-11 rounded-xl font-bebas font-bold text-base border-2 transition-all ${sc===n?'border-yellow-400 scale-110':'border-white/10 hover:border-white/30'} ${relColor}`}
                             style={{background:sc===n?'rgba(201,162,39,0.3)':'rgba(255,255,255,0.07)'}}>
                             {n}
                           </button>
@@ -1468,14 +1487,14 @@ export default function GolfScoringApp() {
               <ChevronLeft className="w-4 h-4"/>Schedule
             </button>
             <div className="text-center">
-              <div className="font-oswald font-bold text-white text-xl">
+              <div className="font-bebas font-bold text-white text-xl">
                 Hole {actualHoleNum}
                 <span className="text-white/40 font-normal text-base ml-2">Par {hd?.par??'—'}</span>
               </div>
               <div className="text-xs text-white/30">{hd?.yards??'—'}yds · Rank {rank}</div>
             </div>
             <div className="text-center">
-              <div className={`font-oswald font-black text-2xl ${ms.leader==='team1'?'text-blue-300':ms.leader==='team2'?'text-red-300':'text-white/60'}`}>{ms.label}</div>
+              <div className={`font-bebas font-black text-2xl ${ms.leader==='team1'?'text-blue-300':ms.leader==='team2'?'text-red-300':'text-white/60'}`}>{ms.label}</div>
               <div className="text-xs text-white/30">{ms.t1Holes}–{ms.t2Holes}</div>
             </div>
           </div>
@@ -1501,7 +1520,7 @@ export default function GolfScoringApp() {
               return (
                 <button key={mh} onClick={()=>setCurrentHole(mh)}
                   className={`flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all ${bg} ${currentHole===mh?'ring-2 ring-yellow-400 ring-offset-1 ring-offset-transparent':''}`}>
-                  <div className="font-oswald font-bold text-base leading-none">{ah}</div>
+                  <div className="font-bebas font-bold text-base leading-none">{ah}</div>
                   {hd2&&<div className="text-xs opacity-60 leading-none">P{hd2.par}</div>}
                 </button>
               );
@@ -1609,19 +1628,19 @@ export default function GolfScoringApp() {
             </div>
             <div className="relative flex items-center justify-between">
               <div className="text-center flex-1">
-                <div className="font-oswald font-black text-6xl text-blue-200 leading-none drop-shadow-lg">{t1pts}</div>
-                <div className="font-oswald font-bold text-blue-300 text-lg mt-1">{tData.teamNames.team1}</div>
+                <div className="font-bebas font-black text-6xl text-blue-200 leading-none drop-shadow-lg">{t1pts}</div>
+                <div className="font-bebas font-bold text-blue-300 text-lg mt-1">{tData.teamNames.team1}</div>
                 {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
               </div>
               <div className="text-center px-4">
-                <div className="text-white/20 font-oswald text-2xl font-bold">VS</div>
+                <div className="text-white/20 font-bebas text-2xl font-bold">VS</div>
                 <div className="text-yellow-400/70 text-xs mt-1">{possiblePts}pts total</div>
                 <div className="text-white/30 text-xs">{played} played</div>
                 <div className="text-white/30 text-xs">{remaining} left</div>
               </div>
               <div className="text-center flex-1">
-                <div className="font-oswald font-black text-6xl text-red-200 leading-none drop-shadow-lg">{t2pts}</div>
-                <div className="font-oswald font-bold text-red-300 text-lg mt-1">{tData.teamNames.team2}</div>
+                <div className="font-bebas font-black text-6xl text-red-200 leading-none drop-shadow-lg">{t2pts}</div>
+                <div className="font-bebas font-bold text-red-300 text-lg mt-1">{tData.teamNames.team2}</div>
                 {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
               </div>
             </div>
@@ -1644,12 +1663,12 @@ export default function GolfScoringApp() {
                   </div>
                   <div className="flex items-center gap-3 text-center">
                     <div>
-                      <div className={`font-oswald font-black text-2xl ${t1won?'text-blue-300':'text-white/40'}`}>{r.teamPoints.team1}</div>
+                      <div className={`font-bebas font-black text-2xl ${t1won?'text-blue-300':'text-white/40'}`}>{r.teamPoints.team1}</div>
                       <div className="text-xs text-blue-300/60">{tData.teamNames.team1}</div>
                     </div>
                     <div className="text-white/20 font-bold">–</div>
                     <div>
-                      <div className={`font-oswald font-black text-2xl ${t2won?'text-red-300':'text-white/40'}`}>{r.teamPoints.team2}</div>
+                      <div className={`font-bebas font-black text-2xl ${t2won?'text-red-300':'text-white/40'}`}>{r.teamPoints.team2}</div>
                       <div className="text-xs text-red-300/60">{tData.teamNames.team2}</div>
                     </div>
                   </div>
@@ -1662,7 +1681,7 @@ export default function GolfScoringApp() {
           <Card className="p-4">
             <div className="flex items-center gap-2 mb-4">
               <Award className="w-5 h-5 text-yellow-400"/>
-              <h2 className="font-oswald font-bold text-white text-xl">MVP Race</h2>
+              <h2 className="font-bebas font-bold text-white text-xl">MVP Race</h2>
             </div>
             <div className="space-y-2">
               {contribs.map((p,i)=>{
@@ -1675,7 +1694,7 @@ export default function GolfScoringApp() {
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="text-xl shrink-0">{i===0?'🏆':i===1?'🥈':i===2?'🥉':`${i+1}`}</span>
                         <div className="min-w-0">
-                          <div className={`font-oswald font-bold truncate ${isTop?'text-yellow-200':'text-white'}`}>{p.name}</div>
+                          <div className={`font-bebas font-bold truncate ${isTop?'text-yellow-200':'text-white'}`}>{p.name}</div>
                           <div className={`text-xs ${isT1?'text-blue-400':'text-red-400'}`}>{isT1?tData.teamNames.team1:tData.teamNames.team2}</div>
                         </div>
                       </div>
