@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Trophy, Plus, Trash2, Save, Award, ChevronLeft, ChevronRight,
-  Check, Flag, Lock, Users, LogOut, Shield
+  Check, Flag, Lock, Users, LogOut, Shield, ChevronDown
 } from 'lucide-react';
 import { db } from '@/Lib/firebase';
 import { ref, onValue, set, get } from 'firebase/database';
@@ -253,11 +253,14 @@ const bestBallStrokes = (m: Match, rank: number, tee: Tee, players: Player[]): R
   const lowest = Math.min(...playerHcps.map(p => p.hcp90));
   
   // Calculate strokes for each player: 90% of difference from lowest, rounded
+  // Supports multiple strokes per hole (e.g., 25 stroke diff = 2 strokes on holes 1-7)
   const strokes: Record<string,number> = {};
   for (const {id, hcp90} of playerHcps) {
     const diff = Math.round((hcp90 - lowest) * 0.9);
-    // Player gets a stroke on this hole if rank <= their stroke allocation
-    strokes[id] = (diff > 0 && rank <= diff) ? 1 : 0;
+    // Base strokes (full 18s) + extra stroke if rank is within remainder
+    const baseStrokes = Math.floor(diff / 18);
+    const extraStroke = (rank <= (diff % 18)) ? 1 : 0;
+    strokes[id] = baseStrokes + extraStroke;
   }
   
   return strokes;
@@ -268,7 +271,13 @@ const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
   if (!vals.length) return {} as Record<string,number>;
   const min = Math.min(...vals);
   const out: Record<string,number> = {};
-  for (const [k,hcp] of Object.entries(pHcps)) out[k] = (hcp-min>0 && rank<=(hcp-min)) ? 1 : 0;
+  for (const [k,hcp] of Object.entries(pHcps)) {
+    const diff = hcp - min;
+    // Base strokes (full 18s) + extra stroke if rank is within remainder
+    const baseStrokes = Math.floor(diff / 18);
+    const extraStroke = (rank <= (diff % 18)) ? 1 : 0;
+    out[k] = baseStrokes + extraStroke;
+  }
   return out;
 };
 
@@ -277,6 +286,68 @@ const calcMatchPts = (m: Match) => {
   if (!fmt) return 0;
   if (fmt.perHole) return 0.5;
   return fmt.pointsPerMatchup * fmt.numMatchups * (m.holes===18 ? 2 : 1);
+};
+
+// ─── Global Skins Calculation (across all matches) ───────────────────────────
+// Skins are awarded to the single pairing (or individual in singles) with the unique lowest net score
+// across ALL matches for each hole
+type SkinEntry = { matchId: string; pk: string; playerIds: string[]; net: number };
+const calcGlobalSkinsForHole = (
+  hole: number,
+  matches: Match[],
+  allScores: Record<string, Record<string, (number|null)[]>>,
+  getTeeForMatch: (m: Match|null) => Tee|null
+): SkinEntry | null => {
+  const allEntries: SkinEntry[] = [];
+  
+  for (const m of matches) {
+    const tee = getTeeForMatch(m);
+    if (!tee) continue;
+    const hd = tee.holes.find(x => x.h === hole);
+    if (!hd) continue;
+    const scores = allScores[m.id] ?? {};
+    const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
+    const fmt = FORMATS[m.format];
+    const isSingles = fmt?.ppp === 1;
+    
+    // Get all pairing keys for this match
+    const allPkKeys = Object.keys(m.pairings).filter(k => (m.pairings[k]?.length ?? 0) > 0);
+    
+    for (const pk of allPkKeys) {
+      const ids = m.pairings[pk] ?? [];
+      if (ids.length === 0) continue;
+      
+      // Calculate raw score for this pairing on this hole
+      let raw: number | null = null;
+      if (isSingles) {
+        // Singles: individual score
+        const pid = ids[0];
+        raw = scores[pid]?.[hole - 1] ?? null;
+      } else if (fmt?.hcpType === 'avg75' || fmt?.hcpType === 'avg') {
+        // Scramble/Modified Scramble/Alternate Shot: team score (single score for the pairing)
+        const pid = ids[0];
+        raw = scores[pid]?.[hole - 1] ?? null;
+      } else {
+        // Best Ball: best of the pairing's scores
+        const playerScores = ids.map(id => scores[id]?.[hole - 1]).filter((v): v is number => v != null);
+        if (playerScores.length > 0) raw = Math.min(...playerScores);
+      }
+      
+      if (raw == null) continue;
+      const net = raw - (skinSt[pk] || 0);
+      allEntries.push({ matchId: m.id, pk, playerIds: ids, net });
+    }
+  }
+  
+  if (allEntries.length === 0) return null;
+  
+  // Find the lowest net score
+  const best = Math.min(...allEntries.map(e => e.net));
+  const winners = allEntries.filter(e => e.net === best);
+  
+  // Only award skin if there's exactly one winner (no ties)
+  if (winners.length === 1) return winners[0];
+  return null;
 };
 
 const blankTee = (): Tee => ({name:'',slope:113,rating:72,par:72,holes:Array.from({length:18},(_,i)=>({h:i+1,par:4,yards:0,rank:i+1}))});
@@ -416,6 +487,7 @@ export default function GolfScoringApp() {
   const [loading, setLoading]             = useState(false);
   const [tData, setTData]                 = useState<Tournament|null>(null);
   const [localScores, setLocalScores]     = useState<Record<string,(number|null)[]>>({});
+  const [allMatchScores, setAllMatchScores] = useState<Record<string,Record<string,(number|null)[]>>>({});
   const [activeMatchId, setActiveMatchId] = useState<string|null>(null);
   const [currentHole, setCurrentHole]     = useState(1);
   const [showMatchBuilder, setShowMatchBuilder] = useState(false);
@@ -458,18 +530,41 @@ export default function GolfScoringApp() {
       const scoresRef = ref(db, `scores/${tournId}/${activeMatchId}`);
       unsubScores = onValue(scoresRef, snap => {
         const s = snap.val() as Record<string,(number|null)[]>|null;
-        if (s) setLocalScores(prev=>({...prev,...s}));
+        if (s) {
+          setLocalScores(prev=>({...prev,...s}));
+          setAllMatchScores(prev=>({...prev,[activeMatchId]:s}));
+        }
       });
     }
     unsubRef.current = () => { unsubTourn(); unsubScores?.(); };
     return () => { unsubRef.current?.(); };
   }, [tournId, activeMatchId]);
 
+  // Load all match scores for global skins calculation when entering scoring screen
+  useEffect(() => {
+    if (screen === 'scoring' && tData?.matches?.length) {
+      (async () => {
+        const all = await loadAllMatchScores();
+        setAllMatchScores(all);
+      })();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, tData?.matches?.length]);
+
   // ── Firebase CRUD ────────────────────────────────────────────────────────────
   const loadTournament = async (id: string) => { const s=await get(ref(db,`tournaments/${id}`)); return s.val() as Tournament|null; };
   const saveTournament = async (data: Tournament, id=tournId) => { await set(ref(db,`tournaments/${id}`),data); };
   const loadMatchScores = async (mid: string) => { const s=await get(ref(db,`scores/${tournId}/${mid}`)); return (s.val() as Record<string,(number|null)[]>) ?? {}; };
   const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => { await set(ref(db,`scores/${tournId}/${mid}`),scores); };
+  const loadAllMatchScores = async (): Promise<Record<string,Record<string,(number|null)[]>>> => {
+    if (!tData?.matches) return {};
+    const result: Record<string,Record<string,(number|null)[]>> = {};
+    for (const m of tData.matches) {
+      const scores = await loadMatchScores(m.id);
+      result[m.id] = scores;
+    }
+    return result;
+  };
 
   // ── Create / Join ────────────────────────────────────────────────────────────
   const createTournament = async () => {
@@ -654,14 +749,37 @@ export default function GolfScoringApp() {
     return {matchupResults,skinWinner,rank,hd};
   };
 
-  const calcMatchStatus = (m: Match, scores: Record<string,(number|null)[]>, tee: Tee|null) => {
+  const calcMatchStatus = (
+    m: Match, 
+    scores: Record<string,(number|null)[]>, 
+    tee: Tee|null,
+    allMatches?: Match[],
+    allScores?: Record<string, Record<string,(number|null)[]>>,
+    getTeeFunc?: (m: Match|null) => Tee|null
+  ) => {
     if(!m||!tee) return {t1Holes:0,t2Holes:0,label:'AS',leader:null as string|null,playerSkins:{} as Record<string,number>};
     let t1=0,t2=0; const playerSkins: Record<string,number>={};
     Object.values(m.pairings).flat().forEach(id=>{playerSkins[id]=0;});
+    
+    // Determine if we should use global skins (across all matches) or per-match skins
+    const useGlobalSkins = allMatches && allMatches.length > 0 && allScores && getTeeFunc;
+    
     for(let h=1;h<=m.holes;h++){
       const res=calcHoleResults(m,h,scores,tee); if(!res) continue;
       for(const r of res.matchupResults){if(r.winner==='t1p')t1++;else if(r.winner==='t2p')t2++;}
-      if(res.skinWinner){const v=1/res.skinWinner.ids.length;res.skinWinner.ids.forEach(id=>{playerSkins[id]=(playerSkins[id]||0)+v;});}
+      
+      // Calculate skins - use global calculation if available
+      if (useGlobalSkins) {
+        const actualHole = m.startHole + h - 1;
+        const globalWinner = calcGlobalSkinsForHole(actualHole, allMatches, allScores, getTeeFunc);
+        if (globalWinner && globalWinner.matchId === m.id) {
+          const v = 1 / globalWinner.playerIds.length;
+          globalWinner.playerIds.forEach(id => { playerSkins[id] = (playerSkins[id] || 0) + v; });
+        }
+      } else if(res.skinWinner) {
+        const v=1/res.skinWinner.ids.length;
+        res.skinWinner.ids.forEach(id=>{playerSkins[id]=(playerSkins[id]||0)+v;});
+      }
     }
     const lead=Math.abs(t1-t2),rem=m.holes-currentHole;
     let label='AS';
@@ -702,7 +820,14 @@ export default function GolfScoringApp() {
         else{matchupPts.team1+=pts/2;matchupPts.team2+=pts/2;}
       }
     }
-    const ms=calcMatchStatus(m,localScores,tee);
+    
+    // Load all match scores for global skins calculation
+    const freshAllScores = await loadAllMatchScores();
+    // Include current local scores (most up-to-date)
+    const combinedAllScores = { ...freshAllScores, [activeMatchId!]: localScores };
+    const allMatches = tData?.matches ?? [];
+    
+    const ms=calcMatchStatus(m, localScores, tee, allMatches, combinedAllScores, getTeeForMatch);
     const result: MatchResult={
       matchId:m.id,format:m.format,holes:m.holes,startHole:m.startHole,
       teamPoints:matchupPts,totalPoints:calcMatchPts(m),
@@ -839,6 +964,9 @@ export default function GolfScoringApp() {
         )}
         {screen!=='standings'&&(
           <button onClick={()=>setScreen('standings')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">📊</button>
+        )}
+        {screen!=='skins'&&(
+          <button onClick={()=>setScreen('skins')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">💰</button>
         )}
         {screen!=='tournament'&&(
           <button onClick={()=>setScreen('tournament')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">📅</button>
@@ -1510,11 +1638,18 @@ export default function GolfScoringApp() {
     const actualHoleNum=currentHole+(m.startHole-1);
     const hd=matchTee?.holes.find(h=>h.h===actualHoleNum);
     const rank=hd?.rank??currentHole;
-    const ms=calcMatchStatus(m,localScores,matchTee);
+    
+    // Calculate global skin winner for this hole (across all matches)
+    const allMatches = tData.matches ?? [];
+    const combinedAllScores = { ...allMatchScores, [activeMatchId!]: localScores };
+    
+    // Use global skins for match status
+    const ms=calcMatchStatus(m, localScores, matchTee, allMatches, combinedAllScores, getTeeForMatch);
     const holeRes=calcHoleResults(m,currentHole,localScores,matchTee);
     const fmt=FORMATS[m.format];
     const isSgl = fmt.ppp===1;
     const matchPairs = getMatchupPairs(m.format);
+    const globalSkinWinner = calcGlobalSkinsForHole(actualHoleNum, allMatches, combinedAllScores, getTeeForMatch);
 
     const PairEntry = ({pk}:{pk:string}) => {
       const ids=(m.pairings[pk]??[]).filter(Boolean);
@@ -1588,7 +1723,7 @@ export default function GolfScoringApp() {
                         const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                         return (
                           <button key={n} onClick={()=>setScore(id,currentHole,n)}
-                            className={`w-11 h-11 rounded-xl font-bebas font-bold text-base border-2 transition-all ${sc===n?'border-yellow-400 scale-110':'border-white/10 hover:border-white/30'} ${relColor}`}
+                            className={`w-12 h-12 rounded-xl font-bebas font-bold text-lg border-2 transition-all active:scale-95 ${sc===n?'border-yellow-400 scale-105':'border-white/10 hover:border-white/30'} ${relColor}`}
                             style={{background:sc===n?'rgba(201,162,39,0.3)':'rgba(255,255,255,0.07)'}}>
                             {n}
                           </button>
@@ -1673,7 +1808,12 @@ export default function GolfScoringApp() {
                   </div>
                 );
               })}
-              {holeRes.skinWinner&&<div className="px-4 py-2.5 rounded-xl text-sm font-bold text-center border border-yellow-500/40 text-yellow-300 bg-yellow-950/40">🏆 Skin → {holeRes.skinWinner.ids.map(id=>players.find(p=>p.id===id)?.name).join(' & ')} · Net {holeRes.skinWinner.net}</div>}
+              {globalSkinWinner && (
+                <div className="px-4 py-2.5 rounded-xl text-sm font-bold text-center border border-yellow-500/40 text-yellow-300 bg-yellow-950/40">
+                  🏆 Skin → {globalSkinWinner.playerIds.map(id=>players.find(p=>p.id===id)?.name).join(' & ')} · Net {globalSkinWinner.net}
+                  {globalSkinWinner.matchId !== activeMatchId && <span className="text-yellow-400/60 ml-2">(other match)</span>}
+                </div>
+              )}
             </div>
           )}
 
@@ -1843,6 +1983,295 @@ export default function GolfScoringApp() {
               {!contribs.length&&<div className="text-center text-white/30 py-8">No player data yet</div>}
             </div>
           </Card>
+        </div>
+      </BG>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SKINS SCREEN - Per-course skins breakdown with pot calculation
+  // ══════════════════════════════════════════════════════════════════════════════
+  if (screen==='skins') {
+    const courses = tData.courses ?? [];
+    const matches = tData.matches ?? [];
+    const matchResults = tData.matchResults ?? [];
+    
+    // State for units per course (stored as object keyed by courseId)
+    const [skinsPots, setSkinsPots] = useState<Record<string,number>>({});
+    
+    // Calculate skins for each course
+    const courseSkinsData = courses.map(course => {
+      // Find all matches played on this course
+      const courseMatches = matches.filter(m => m.courseId === course.id);
+      const completedMatchIds = matchResults.map(r => r.matchId);
+      const completedCourseMatches = courseMatches.filter(m => completedMatchIds.includes(m.id));
+      
+      // Get all match results for this course
+      const courseResults = matchResults.filter(r => courseMatches.some(m => m.id === r.matchId));
+      
+      // Collect all scores from all matches on this course
+      const allScoresForCourse: Record<string, Record<number, { raw: number; net: number }>> = {};
+      courseResults.forEach(result => {
+        const match = courseMatches.find(m => m.id === result.matchId);
+        if (!match || !result.scores) return;
+        Object.entries(result.scores).forEach(([pairingKey, holeScores]) => {
+          const globalKey = `${result.matchId}__${pairingKey}`;
+          allScoresForCourse[globalKey] = holeScores as Record<number, { raw: number; net: number }>;
+        });
+      });
+      
+      // Calculate skins per hole across all matches on this course
+      // IMPORTANT: Skins are tracked per INDIVIDUAL player (pairings change between formats)
+      const holeResults: { hole: number; winner: string | null; winnerName: string; winnerPlayerIds: string[] }[] = [];
+      const skinsByPlayer: Record<string, number> = {}; // Track by individual player ID
+      
+      // Determine holes range for this course (1-9 or 1-18 depending on matches)
+      const maxHoles = Math.max(...completedCourseMatches.map(m => m.holes), 9);
+      
+      // For skins, we need to recalculate net scores using handicap strokes
+      // Build a map of pairing -> player IDs and their combined handicap
+      const pairingInfo: Record<string, { playerIds: string[]; handicap: number; format: string }> = {};
+      courseMatches.forEach(match => {
+        if (!match.pairings) return;
+        match.pairings.forEach((pairing, idx) => {
+          const globalKey = `${match.id}__p${idx + 1}`;
+          const playerHandicaps = pairing.map(pid => {
+            const player = tData.players?.find(p => p.id === pid);
+            return player?.handicap ?? 0;
+          });
+          // For alternate shot: 50% of combined, for others: use combined
+          const combinedHcp = playerHandicaps.reduce((a, b) => a + b, 0);
+          const effectiveHcp = match.format === 'alternate' ? Math.round(combinedHcp * 0.5) : combinedHcp;
+          pairingInfo[globalKey] = { 
+            playerIds: pairing, 
+            handicap: effectiveHcp,
+            format: match.format 
+          };
+        });
+      });
+      
+      // Find the lowest handicap pairing on this course (for relative stroke calculation)
+      const allHandicaps = Object.values(pairingInfo).map(p => p.handicap);
+      const minHandicap = allHandicaps.length > 0 ? Math.min(...allHandicaps) : 0;
+      
+      for (let h = 1; h <= maxHoles; h++) {
+        const holeHcp = course.holes?.[h - 1]?.handicap ?? h; // Hole handicap ranking
+        const holeNetScores: { key: string; net: number; playerIds: string[] }[] = [];
+        
+        Object.entries(allScoresForCourse).forEach(([key, scores]) => {
+          const holeData = scores[h];
+          if (!holeData || typeof holeData.raw !== 'number') return;
+          
+          const info = pairingInfo[key];
+          if (!info) return;
+          
+          // Calculate strokes this pairing gets on this hole relative to lowest handicap
+          // Same logic as match play: base strokes + extra stroke on hardest holes
+          const hcpDiff = info.handicap - minHandicap;
+          let strokes = 0;
+          if (hcpDiff > 0) {
+            // Base strokes everyone gets on all holes
+            const baseStrokes = Math.floor(hcpDiff / 18);
+            // Extra stroke on holes ranked 1 to (hcpDiff % 18)
+            const extraStrokeHoles = hcpDiff % 18;
+            strokes = baseStrokes + (holeHcp <= extraStrokeHoles ? 1 : 0);
+          }
+          
+          const netScore = holeData.raw - strokes;
+          holeNetScores.push({ key, net: netScore, playerIds: info.playerIds });
+        });
+        
+        if (holeNetScores.length === 0) {
+          holeResults.push({ hole: h, winner: null, winnerName: 'No scores', winnerPlayerIds: [] });
+          continue;
+        }
+        
+        const minNet = Math.min(...holeNetScores.map(s => s.net));
+        const winners = holeNetScores.filter(s => s.net === minNet);
+        
+        if (winners.length === 1) {
+          const winnerKey = winners[0].key;
+          const winnerPlayerIds = winners[0].playerIds;
+          
+          // Credit EACH player in the winning pairing with a skin
+          winnerPlayerIds.forEach(pid => {
+            skinsByPlayer[pid] = (skinsByPlayer[pid] || 0) + 1;
+          });
+          
+          // Get player names for display
+          const names = winnerPlayerIds.map(pid => tData.players?.find(p => p.id === pid)?.name || 'Unknown');
+          const winnerName = names.join(' & ');
+          
+          holeResults.push({ hole: h, winner: winnerKey, winnerName, winnerPlayerIds });
+        } else {
+          holeResults.push({ hole: h, winner: null, winnerName: 'Push', winnerPlayerIds: [] });
+        }
+      }
+      
+      // Build summary by INDIVIDUAL player
+      const playerSummary: { playerId: string; name: string; skins: number }[] = [];
+      Object.entries(skinsByPlayer).forEach(([playerId, skins]) => {
+        const player = tData.players?.find(p => p.id === playerId);
+        const name = player?.name || 'Unknown';
+        playerSummary.push({ playerId, name, skins });
+      });
+      playerSummary.sort((a, b) => b.skins - a.skins);
+      
+      // Total skins = sum of all hole winners (not sum of player skins, since each win credits multiple players)
+      const totalSkins = holeResults.filter(r => r.winner !== null).length;
+      const potUnits = skinsPots[course.id] || 0;
+      const unitsPerSkin = totalSkins > 0 ? potUnits / totalSkins : 0;
+      
+      return {
+        course,
+        holeResults,
+        playerSummary,
+        totalSkins,
+        potUnits,
+        unitsPerSkin,
+        completedMatches: completedCourseMatches.length,
+        totalMatches: courseMatches.length,
+      };
+    });
+    
+    return (
+      <BG>
+        <TopBar title="Skins"/>
+        <div className="max-w-2xl mx-auto p-4 space-y-6 pb-8 safe-bottom">
+          
+          {courseSkinsData.length === 0 && (
+            <Card className="p-6 text-center">
+              <div className="text-white/50">No courses added yet</div>
+            </Card>
+          )}
+          
+          {courseSkinsData.map(({ course, holeResults, playerSummary, totalSkins, potUnits, unitsPerSkin, completedMatches, totalMatches }) => (
+            <Card key={course.id} className="p-4">
+              {/* Course Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="font-bebas font-bold text-white text-xl">{course.name}</h2>
+                  <div className="text-xs text-white/40">
+                    {completedMatches}/{totalMatches} matches completed • {totalSkins} skins won
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-white/40 mb-1">Pot (units)</div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={potUnits || ''}
+                    onChange={(e) => setSkinsPots(prev => ({ ...prev, [course.id]: parseFloat(e.target.value) || 0 }))}
+                    placeholder="0"
+                    className="w-20 px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white text-center text-sm focus:outline-none focus:border-[#C9A227]"
+                  />
+                </div>
+              </div>
+              
+              {/* Units per Skin */}
+              {potUnits > 0 && totalSkins > 0 && (
+                <div className="mb-4 p-3 rounded-xl bg-[#C9A227]/10 border border-[#C9A227]/30">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#C9A227] text-sm font-medium">Units per Skin</span>
+                    <span className="font-bebas font-bold text-[#C9A227] text-xl">{unitsPerSkin.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Payouts - By Individual Player */}
+              {playerSummary.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-xs text-white/40 mb-2 font-medium">INDIVIDUAL PAYOUTS</div>
+                  <div className="space-y-2">
+                    {playerSummary.map(({ playerId, name, skins }) => (
+                      <div key={playerId} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-yellow-400">🏆</span>
+                          <span className="text-white text-sm font-medium">{name}</span>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-white/60">{skins} skin{skins !== 1 ? 's' : ''}</span>
+                          {potUnits > 0 && (
+                            <span className="text-emerald-400 font-bold">{(skins * unitsPerSkin).toFixed(2)} units</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Hole-by-Hole Breakdown */}
+              <details className="group">
+                <summary className="cursor-pointer text-xs text-white/40 hover:text-white/60 py-2 flex items-center gap-1">
+                  <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform"/>
+                  Hole-by-hole breakdown
+                </summary>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {holeResults.map(({ hole, winner, winnerName }) => (
+                    <div 
+                      key={hole} 
+                      className={`p-2 rounded-lg text-center text-xs ${winner ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-white/5 border border-white/10'}`}
+                    >
+                      <div className="text-white/40 mb-0.5">Hole {hole}</div>
+                      <div className={`font-medium truncate ${winner ? 'text-yellow-400' : 'text-white/30'}`}>
+                        {winnerName}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </Card>
+          ))}
+          
+          {/* Tournament Totals - Individual Players Across All Courses */}
+          {courseSkinsData.length > 1 && (
+            <Card className="p-4">
+              <h2 className="font-bebas font-bold text-white text-xl mb-4">Tournament Totals (Individual)</h2>
+              {(() => {
+                // Aggregate skins across all courses by INDIVIDUAL PLAYER
+                const totalsByPlayer: Record<string, { name: string; skins: number; payout: number }> = {};
+                let grandTotalSkins = 0;
+                let grandTotalPayout = 0;
+                
+                courseSkinsData.forEach(({ playerSummary, unitsPerSkin, potUnits, totalSkins }) => {
+                  playerSummary.forEach(({ playerId, name, skins }) => {
+                    if (!totalsByPlayer[playerId]) totalsByPlayer[playerId] = { name, skins: 0, payout: 0 };
+                    totalsByPlayer[playerId].skins += skins;
+                    totalsByPlayer[playerId].payout += skins * unitsPerSkin;
+                  });
+                  grandTotalSkins += totalSkins;
+                  grandTotalPayout += potUnits;
+                });
+                
+                const sortedTotals = Object.entries(totalsByPlayer)
+                  .map(([playerId, data]) => ({ playerId, ...data }))
+                  .sort((a, b) => b.skins - a.skins);
+                
+                return (
+                  <div className="space-y-2">
+                    {sortedTotals.map(({ playerId, name, skins, payout }) => (
+                      <div key={playerId} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-yellow-400">🏆</span>
+                          <span className="text-white text-sm font-medium">{name}</span>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-white/60">{skins} skin{skins !== 1 ? 's' : ''}</span>
+                          {payout > 0 && (
+                            <span className="text-emerald-400 font-bold">{payout.toFixed(2)} units</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {sortedTotals.length === 0 && (
+                      <div className="text-center text-white/40 py-4">No skins won yet</div>
+                    )}
+                  </div>
+                );
+              })()}
+            </Card>
+          )}
         </div>
       </BG>
     );
