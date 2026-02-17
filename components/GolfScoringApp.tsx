@@ -1666,6 +1666,11 @@ export default function GolfScoringApp() {
       const {t1:mp2}=matchplayStrokes(m.pairingHcps.t1p2??0,m.pairingHcps.t2p2??0,rank);
       const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps.t1p1??0,m.pairingHcps.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps.t1p2??0,m.pairingHcps.t2p2??0,rank).t2);
       const isScramble=['scramble','alternateshot','modifiedscramble'].includes(m.format);
+      const isBestBall = m.format === 'bestball';
+      
+      // For Best Ball: calculate individual player strokes
+      const playerStrokes = isBestBall && matchTee ? bestBallStrokes(m, rank, matchTee, players) : {};
+      
       const names=ids.map(id=>players.find(p=>p.id===id)?.name||'?');
       const raw=ids.map(id=>localScores[id]?.[currentHole-1]).filter((v):v is number=>v!=null);
       const teamScore=raw.length?(isScramble?raw[0]:Math.min(...raw)):null;
@@ -1682,14 +1687,52 @@ export default function GolfScoringApp() {
           style={{background:isT1?'rgba(30,64,175,0.15)':'rgba(185,28,28,0.15)'}}>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <div className={`font-bebas font-bold text-lg ${isT1?'text-blue-200':'text-red-200'}`}>
-                {names.join(' & ')}
-                {!fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm">{'★'.repeat(myStrokes)}</span>}
-              </div>
+              {isBestBall ? (
+                // Best Ball: Show individual player names with their strokes
+                <div className={`font-bebas font-bold text-lg ${isT1?'text-blue-200':'text-red-200'}`}>
+                  {ids.map((id, idx) => {
+                    const p = players.find(x => x.id === id);
+                    const hasStroke = playerStrokes[id] > 0;
+                    return (
+                      <span key={id}>
+                        {p?.name || '?'}
+                        {hasStroke && <span className="text-yellow-400 ml-1 text-sm">★</span>}
+                        {idx < ids.length - 1 && <span className="text-white/40 mx-1">&</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                // Other formats: Show team name with team strokes
+                <div className={`font-bebas font-bold text-lg ${isT1?'text-blue-200':'text-red-200'}`}>
+                  {names.join(' & ')}
+                  {!fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm">{'★'.repeat(myStrokes)}</span>}
+                </div>
+              )}
               <div className="text-xs text-white/30">
-                HC {m.pairingHcps[pk]??0}
-                {!fmt.perHole&&<> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</>}
-                {skinSt[pk]>0&&<span className="text-yellow-400 ml-2">Skin +{skinSt[pk]}</span>}
+                {isBestBall ? (
+                  // Best Ball: Show individual handicaps
+                  <span>
+                    {ids.map((id, idx) => {
+                      const p = players.find(x => x.id === id);
+                      const ch = matchTee ? courseHcp(p?.handicapIndex ?? 0, matchTee.slope) : 0;
+                      const hcp90 = Math.round(ch * 0.9);
+                      return (
+                        <span key={id}>
+                          HC {hcp90} (90%)
+                          {idx < ids.length - 1 && <span className="mx-1">·</span>}
+                        </span>
+                      );
+                    })}
+                    <span className="ml-2 text-white/20">· Rank {rank}</span>
+                  </span>
+                ) : (
+                  <span>
+                    HC {m.pairingHcps[pk]??0}
+                    {!fmt.perHole&&<> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</>}
+                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2">Skin +{skinSt[pk]}</span>}
+                  </span>
+                )}
               </div>
             </div>
             {teamScore!=null&&(
@@ -1719,9 +1762,13 @@ export default function GolfScoringApp() {
               {ids.map(id=>{
                 const p=players.find(x=>x.id===id);
                 const sc=localScores[id]?.[currentHole-1]??null;
+                const hasStroke = isBestBall && playerStrokes[id] > 0;
                 return (
                   <div key={id}>
-                    <div className="text-xs text-white/40 mb-2 font-bold tracking-wider">{p?.name?.toUpperCase()}</div>
+                    <div className="text-xs text-white/40 mb-2 font-bold tracking-wider">
+                      {p?.name?.toUpperCase()}
+                      {hasStroke && <span className="text-yellow-400 ml-2">★ Gets stroke</span>}
+                    </div>
                     <div className="flex gap-2 flex-wrap">
                       {[1,2,3,4,5,6,7,8,9,10].map(n=>{
                         const par = hd?.par ?? 4;
