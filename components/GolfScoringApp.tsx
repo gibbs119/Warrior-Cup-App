@@ -1042,60 +1042,57 @@ export default function GolfScoringApp() {
       ];
 
       const PairingPicker = ({pk,label,pool,isT1,oppPk}:{pk:string;label:string;pool:Player[];isT1:boolean;oppPk:string}) => (
-        <div className={`p-3 rounded-xl border ${isT1?'border-blue-500/30':'border-red-500/30'}`}
-          style={{background:isT1?'rgba(30,64,175,0.15)':'rgba(185,28,28,0.15)'}}>
-          <div className={`text-xs font-bold mb-2 tracking-wider ${isT1?'text-blue-300':'text-red-300'}`}>{label}</div>
+        <div className={`p-3 rounded-xl border-2 ${isT1?'border-blue-300 bg-blue-50':'border-red-300 bg-red-50'}`}>
+          <div className={`text-xs font-bold mb-2 tracking-wider ${isT1?'text-blue-700':'text-red-700'}`}>{label}</div>
           {isSgl?(
             <select value={m.pairings[pk]?.[0]??''} onChange={e=>setMatchPairing(pk,0,e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-white text-sm border border-white/10 outline-none appearance-none"
-              style={{background:'rgba(20,30,55,0.9)'}}>
+              className="w-full px-3 py-2 rounded-lg text-gray-900 text-sm border-2 border-gray-200 outline-none appearance-none bg-white">
               {playerOpts(pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[pk]?.[0]}>{o.label}</option>)}
             </select>
           ):(
             <div className="space-y-1.5">
               {[0,1].map(slot=>(
                 <select key={slot} value={m.pairings[pk]?.[slot]??''} onChange={e=>setMatchPairing(pk,slot,e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-white text-sm border border-white/10 outline-none appearance-none"
-                  style={{background:'rgba(20,30,55,0.9)'}}>
+                  className="w-full px-3 py-2 rounded-lg text-gray-900 text-sm border-2 border-gray-200 outline-none appearance-none bg-white">
                   {playerOpts(pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[pk]?.[slot]}>{o.label}</option>)}
                 </select>
               ))}
             </div>
           )}
           {(m.pairingHcps[pk]??0)>0&&(
-            <div className={`text-xs font-bold mt-1.5 ${isT1?'text-blue-300':'text-red-300'}`}>
-              HC {m.pairingHcps[pk]}<span className="text-white/30 font-normal ml-1">vs {m.pairingHcps[oppPk]??0} · diff {Math.abs((m.pairingHcps[pk]??0)-(m.pairingHcps[oppPk]??0))}</span>
+            <div className={`text-xs font-bold mt-1.5 ${isT1?'text-blue-700':'text-red-700'}`}>
+              HC {m.pairingHcps[pk]}<span className="text-gray-500 font-normal ml-1">vs {m.pairingHcps[oppPk]??0} · diff {Math.abs((m.pairingHcps[pk]??0)-(m.pairingHcps[oppPk]??0))}</span>
             </div>
           )}
         </div>
       );
 
-      const borderColor = m.completed ? 'border-emerald-500/40' : result ? 'border-yellow-500/30' : 'border-white/10';
-      const bgStyle = m.completed ? {background:'rgba(5,46,22,0.4)'} : result ? {background:'rgba(113,63,18,0.3)'} : {background:'rgba(255,255,255,0.04)'};
+      const borderColor = m.completed ? 'border-emerald-400' : result ? 'border-yellow-400' : 'border-gray-200';
+      const bgColor = m.completed ? 'bg-emerald-50' : result ? 'bg-yellow-50' : 'bg-white';
 
       return (
-        <div className={`p-4 rounded-2xl border-2 ${borderColor}`} style={bgStyle}>
+        <div className={`p-4 rounded-2xl border-2 ${borderColor} ${bgColor}`}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className="font-bebas font-bold text-white">{fmt.name}</span>
+                <span className="font-bebas font-bold text-gray-900">{fmt.name}</span>
                 <Badge color={m.startHole===1?'blue':'purple'}>{m.startHole===1?'Front 9':'Back 9'}</Badge>
                 <Badge color="gray">{m.holes}H</Badge>
                 <Badge color="gold">{totalPts}pts</Badge>
                 {m.completed&&<Badge color="green">✓ Done</Badge>}
               </div>
-              {matchCourseName&&<div className="text-xs text-white/30 mb-1">{matchCourseName} · {matchTee?.name} Tees</div>}
+              {matchCourseName&&<div className="text-xs text-gray-500 mb-1">{matchCourseName} · {matchTee?.name} Tees</div>}
               {result&&(
                 <div className="text-sm font-bold">
-                  <span className="text-blue-300">{tData.teamNames.team1}: {result.teamPoints.team1}pt</span>
-                  <span className="text-white/30 mx-2">|</span>
-                  <span className="text-red-300">{tData.teamNames.team2}: {result.teamPoints.team2}pt</span>
+                  <span className="text-blue-600">{tData.teamNames.team1}: {result.teamPoints.team1}pt</span>
+                  <span className="text-gray-400 mx-2">|</span>
+                  <span className="text-red-600">{tData.teamNames.team2}: {result.teamPoints.team2}pt</span>
                 </div>
               )}
             </div>
             <div className="flex gap-2 items-center flex-wrap justify-end">
               {role==='admin'&&!m.completed&&(
-                <button onClick={()=>toggleExpanded(m.id)} className="text-white/40 hover:text-white text-xs font-bold border border-white/10 px-2.5 py-1.5 rounded-lg">
+                <button onClick={()=>toggleExpanded(m.id)} className="text-gray-600 hover:text-gray-900 text-xs font-bold border border-gray-300 px-2.5 py-1.5 rounded-lg">
                   {isExpanded?'▲':'▼ Edit'}
                 </button>
               )}
@@ -1107,7 +1104,7 @@ export default function GolfScoringApp() {
                 }}>▶ Play</Btn>
               )}
               {role==='player'&&!m.completed&&(
-                <Btn color="navy" sm onClick={async()=>{
+                <Btn color="blue" sm onClick={async()=>{
                   const saved=await loadMatchScores(m.id);
                   const init: Record<string,(number|null)[]>={};
                   Object.values(m.pairings).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
@@ -1115,7 +1112,7 @@ export default function GolfScoringApp() {
                   setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>Enter Scores</Btn>
               )}
-              {role==='admin'&&<button onClick={()=>updateTournament(d=>({...d,matches:d.matches.filter(x=>x.id!==m.id)}))} className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-4 h-4"/></button>}
+              {role==='admin'&&<button onClick={()=>updateTournament(d=>({...d,matches:d.matches.filter(x=>x.id!==m.id)}))} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>}
               {m.completed&&<Btn color="ghost" sm onClick={()=>setViewingMatchId(m.id)}>📋 Card</Btn>}
               {m.completed&&role==='admin'&&(
                 <Btn color="ghost" sm onClick={async()=>{
@@ -1130,36 +1127,34 @@ export default function GolfScoringApp() {
           </div>
 
           {isExpanded&&role==='admin'&&(
-            <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+            <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
               <Sel label="Course & Tee for this match" value={`${m.courseId??tData.activeCourseId}::${m.teeId??tData.activeTeeId}`}
                 onChange={setMatchCourseTee} options={allTeeOpts}/>
               {isSgl ? (
                 <div>
-                  <div className="text-xs font-bold text-white/40 mb-2 tracking-wider uppercase">4 Individual Matchups (1pt each)</div>
+                  <div className="text-xs font-bold text-gray-600 mb-2 tracking-wider uppercase">4 Individual Matchups (1pt each)</div>
                   <div className="grid grid-cols-1 gap-2">
                     {([['t1p1','t2p1'],['t1p2','t2p2'],['t1p3','t2p3'],['t1p4','t2p4']] as const).map(([a,b],i)=>(
-                      <div key={i} className="p-3 rounded-xl border border-white/10" style={{background:'rgba(255,255,255,0.03)'}}>
-                        <div className="text-xs font-bold text-white/40 mb-2">Match {i+1}</div>
+                      <div key={i} className="p-3 rounded-xl border border-gray-200 bg-gray-50">
+                        <div className="text-xs font-bold text-gray-600 mb-2">Match {i+1}</div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <div className="text-xs text-blue-300 font-bold mb-1">{tData.teamNames.team1}</div>
+                            <div className="text-xs text-blue-600 font-bold mb-1">{tData.teamNames.team1}</div>
                             <select value={m.pairings[a]?.[0]??''} onChange={e=>setMatchPairing(a,0,e.target.value)}
-                              className="w-full px-2 py-2 rounded-lg text-white text-xs border border-white/10 outline-none appearance-none"
-                              style={{background:'rgba(20,30,55,0.9)'}}>
+                              className="w-full px-2 py-2 rounded-lg text-gray-900 text-xs border-2 border-gray-200 outline-none appearance-none bg-white">
                               {playerOpts(t1pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[a]?.[0]}>{o.label}</option>)}
                             </select>
                           </div>
                           <div>
-                            <div className="text-xs text-red-300 font-bold mb-1">{tData.teamNames.team2}</div>
+                            <div className="text-xs text-red-600 font-bold mb-1">{tData.teamNames.team2}</div>
                             <select value={m.pairings[b]?.[0]??''} onChange={e=>setMatchPairing(b,0,e.target.value)}
-                              className="w-full px-2 py-2 rounded-lg text-white text-xs border border-white/10 outline-none appearance-none"
-                              style={{background:'rgba(20,30,55,0.9)'}}>
+                              className="w-full px-2 py-2 rounded-lg text-gray-900 text-xs border-2 border-gray-200 outline-none appearance-none bg-white">
                               {playerOpts(t2pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[b]?.[0]}>{o.label}</option>)}
                             </select>
                           </div>
                         </div>
                         {(m.pairingHcps[a]||m.pairingHcps[b])&&(
-                          <div className="text-xs text-white/30 mt-1 text-center">HC {m.pairingHcps[a]??0} vs {m.pairingHcps[b]??0}</div>
+                          <div className="text-xs text-gray-500 mt-1 text-center">HC {m.pairingHcps[a]??0} vs {m.pairingHcps[b]??0}</div>
                         )}
                       </div>
                     ))}
@@ -1190,8 +1185,8 @@ export default function GolfScoringApp() {
       const fmt = FORMATS[f.format];
       const pts = fmt.pointsPerMatchup * fmt.numMatchups * (f.holes===18?2:1);
       return (
-        <div className="p-4 rounded-2xl border border-yellow-500/30" style={{background:'rgba(201,162,39,0.08)'}}>
-          <div className="font-bebas font-bold text-yellow-300 mb-3 text-lg">New Match</div>
+        <div className="p-4 rounded-2xl border-2 border-yellow-400 bg-yellow-50">
+          <div className="font-bebas font-bold text-yellow-900 mb-3 text-lg">New Match</div>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Sel label="Format" value={f.format} onChange={v=>setF(x=>({...x,format:v}))}
               options={Object.entries(FORMATS).map(([k,v])=>({value:k,label:v.name}))}/>
@@ -1203,7 +1198,7 @@ export default function GolfScoringApp() {
           <Sel label="Course & Tee" value={`${f.courseId}::${f.teeId}`}
             onChange={v=>{const[cid,tid]=v.split('::');setF(x=>({...x,courseId:cid,teeId:tid}));}}
             options={allTeeOpts} className="mb-3"/>
-          <div className="text-sm font-bold text-yellow-400 mb-3">
+          <div className="text-sm font-bold text-yellow-800 mb-3">
             {fmt.perHole ? '0.5 pts — winner of most holes' : `${pts} pts available`}
           </div>
           <div className="flex gap-2">
@@ -1228,33 +1223,33 @@ export default function GolfScoringApp() {
         <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
           {/* Scoreboard */}
           <div className="grid grid-cols-3 gap-3">
-            <Card className="p-4 text-center border border-blue-500/30" style={{background:'rgba(30,64,175,0.2)'}}>
-              <div className="font-bebas font-bold text-blue-300 text-5xl leading-none">{t1pts}</div>
-              <div className="font-bold text-blue-300 text-sm mt-1 truncate">{tData.teamNames.team1}</div>
-              {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
+            <Card blue className="p-4 text-center">
+              <div className="font-bebas font-bold text-white text-5xl leading-none">{t1pts}</div>
+              <div className="font-bold text-white text-sm mt-1 truncate">{tData.teamNames.team1}</div>
+              {possiblePts>0&&<div className="text-xs text-white/60 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
             </Card>
             <Card className="p-4 text-center flex flex-col justify-center">
-              <div className="text-white/30 text-xs font-bold tracking-widest uppercase mb-1">Total</div>
-              <div className="font-bebas font-bold text-white text-2xl">{possiblePts}</div>
-              <div className="text-xs text-yellow-400/70">Win at {toWin.toFixed(1)}</div>
+              <div className="text-gray-500 text-xs font-bold tracking-widest uppercase mb-1">Total</div>
+              <div className="font-bebas font-bold text-gray-900 text-2xl">{possiblePts}</div>
+              <div className="text-xs text-blue-600">Win at {toWin.toFixed(1)}</div>
             </Card>
-            <Card className="p-4 text-center border border-red-500/30" style={{background:'rgba(185,28,28,0.2)'}}>
-              <div className="font-bebas font-bold text-red-300 text-5xl leading-none">{t2pts}</div>
-              <div className="font-bold text-red-300 text-sm mt-1 truncate">{tData.teamNames.team2}</div>
-              {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
+            <Card className="p-4 text-center bg-red-50">
+              <div className="font-bebas font-bold text-red-700 text-5xl leading-none">{t2pts}</div>
+              <div className="font-bold text-red-700 text-sm mt-1 truncate">{tData.teamNames.team2}</div>
+              {possiblePts>0&&<div className="text-xs text-gray-500 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
             </Card>
           </div>
 
           {/* Matches */}
           <Card className="p-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bebas font-bold text-white text-xl">Match Schedule</h2>
+              <h2 className="font-bebas font-bold text-gray-900 text-xl">Match Schedule</h2>
               {role==='admin'&&<Btn color="green" sm onClick={()=>setShowMatchBuilder(true)} disabled={showMatchBuilder}><span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add Match</span></Btn>}
             </div>
             {showMatchBuilder&&role==='admin'&&<div className="mb-4"><AddMatchForm/></div>}
             {!tData.matches?.length&&!showMatchBuilder&&(
-              <div className="text-center text-white/30 py-12">
-                <Flag className="w-10 h-10 mx-auto mb-3 opacity-30"/>
+              <div className="text-center text-gray-400 py-12">
+                <Flag className="w-10 h-10 mx-auto mb-3 opacity-30 text-gray-300"/>
                 <div>{role==='admin'?'No matches yet — add one above':'No matches scheduled yet'}</div>
               </div>
             )}
