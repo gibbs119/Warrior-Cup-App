@@ -2009,14 +2009,15 @@ export default function GolfScoringApp() {
       // Get all match results for this course
       const courseResults = matchResults.filter(r => courseMatches.some(m => m.id === r.matchId));
       
-      // Collect all scores from allMatchScores for matches on this course
-      const allScoresForCourse: Record<string, Record<number, { raw: number; net: number }>> = {};
+      // Collect all RAW scores from allMatchScores for matches on this course
+      // Note: allMatchScores stores raw scores as (number|null)[] arrays, indexed from 0
+      const allRawScoresForCourse: Record<string, (number|null)[]> = {};
       const completedMatchIdsOnCourse = courseResults.map(r => r.matchId);
       Object.entries(allMatchScores).forEach(([matchId, matchScores]) => {
         if (!completedMatchIdsOnCourse.includes(matchId)) return;
         Object.entries(matchScores).forEach(([pairingKey, holeScores]) => {
           const globalKey = `${matchId}__${pairingKey}`;
-          allScoresForCourse[globalKey] = holeScores as Record<number, { raw: number; net: number }>;
+          allRawScoresForCourse[globalKey] = holeScores as (number|null)[];
         });
       });
       
@@ -2058,9 +2059,9 @@ export default function GolfScoringApp() {
         const holeHcp = course.holes?.[h - 1]?.handicap ?? h; // Hole handicap ranking
         const holeNetScores: { key: string; net: number; playerIds: string[] }[] = [];
         
-        Object.entries(allScoresForCourse).forEach(([key, scores]) => {
-          const holeData = scores[h];
-          if (!holeData || typeof holeData.raw !== 'number') return;
+        Object.entries(allRawScoresForCourse).forEach(([key, scores]) => {
+          const rawScore = scores[h - 1]; // Arrays are 0-indexed, holes are 1-indexed
+          if (rawScore == null || typeof rawScore !== 'number') return;
           
           const info = pairingInfo[key];
           if (!info) return;
@@ -2077,7 +2078,7 @@ export default function GolfScoringApp() {
             strokes = baseStrokes + (holeHcp <= extraStrokeHoles ? 1 : 0);
           }
           
-          const netScore = holeData.raw - strokes;
+          const netScore = rawScore - strokes;
           holeNetScores.push({ key, net: netScore, playerIds: info.playerIds });
         });
         
