@@ -2013,6 +2013,10 @@ export default function GolfScoringApp() {
       const completedMatchIds = matchResults.map(r => r.matchId);
       const completedCourseMatches = courseMatches.filter(m => completedMatchIds.includes(m.id));
       
+      // Get a tee for hole handicap info - use first completed match's tee or default to first tee
+      const sampleMatch = completedCourseMatches[0];
+      const courseTee = sampleMatch ? getTeeForMatch(sampleMatch) : course.tees[0];
+      
       // Get all match results for this course
       const courseResults = matchResults.filter(r => courseMatches.some(m => m.id === r.matchId));
       
@@ -2045,7 +2049,7 @@ export default function GolfScoringApp() {
           const globalKey = `${match.id}__${pairingKey}`;
           const playerHandicaps = playerIds.map(pid => {
             const player = tData.players?.find(p => p.id === pid);
-            return player?.handicap ?? 0;
+            return player?.handicapIndex ?? 0;
           });
           // For alternate shot: 50% of combined, for others: use combined
           const combinedHcp = playerHandicaps.reduce((a, b) => a + b, 0);
@@ -2063,7 +2067,7 @@ export default function GolfScoringApp() {
       const minHandicap = allHandicaps.length > 0 ? Math.min(...allHandicaps) : 0;
       
       for (let h = 1; h <= maxHoles; h++) {
-        const holeHcp = course.holes?.[h - 1]?.handicap ?? h; // Hole handicap ranking
+        const holeHcp = courseTee?.holes?.[h - 1]?.rank ?? h; // Hole handicap ranking
         const holeNetScores: { key: string; net: number; playerIds: string[] }[] = [];
         
         Object.entries(allRawScoresForCourse).forEach(([key, scores]) => {
