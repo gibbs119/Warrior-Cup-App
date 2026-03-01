@@ -554,7 +554,23 @@ export default function GolfScoringApp() {
 
   // ── Firebase CRUD ────────────────────────────────────────────────────────────
   // ─── Firebase Operations (Concurrent-Safe) ────────────────────────────────────
-  const loadTournament = async (id: string) => { const s=await get(ref(db,`tournaments/${id}`)); return s.val() as Tournament|null; };
+  const loadTournament = async (id: string) => { 
+    const s=await get(ref(db,`tournaments/${id}`)); 
+    const data = s.val() as Tournament|null;
+    
+    // FIX: Firebase converts empty arrays to null, so normalize the data
+    if (data) {
+      data.matches = data.matches || [];
+      data.matchResults = data.matchResults || [];
+      data.players = data.players || [];
+      data.courses = data.courses || [];
+      data.teams = data.teams || { team1: [], team2: [] };
+      data.teams.team1 = data.teams.team1 || [];
+      data.teams.team2 = data.teams.team2 || [];
+    }
+    
+    return data;
+  };
   const saveTournament = async (data: Tournament, id=tournId) => { await set(ref(db,`tournaments/${id}`),data); };
   const loadMatchScores = async (mid: string) => { const s=await get(ref(db,`scores/${tournId}/${mid}`)); return (s.val() as Record<string,(number|null)[]>) ?? {}; };
   
@@ -617,32 +633,80 @@ export default function GolfScoringApp() {
   // ─── Tournament Updates (Transaction-Safe) ────────────────────────────────────
   // FIXED: Use Firebase transactions to prevent race conditions when multiple admins edit simultaneously
   const updateTournament = async (updater: (d:Tournament)=>Tournament) => {
-    if (!tData) return;
+    if (!tData) {
+      console.error('updateTournament: No tournament data available');
+      return;
+    }
     
     try {
+      console.log('Starting transaction for tournament:', tournId);
+      
       // Use runTransaction for atomic read-modify-write operations
       const tournRef = ref(db, `tournaments/${tournId}`);
       const result = await runTransaction(tournRef, (current) => {
-        if (!current) return current; // Abort if tournament doesn't exist
+        console.log('Transaction callback, current data:', current ? 'exists' : 'null');
+        if (!current) {
+          console.error('Transaction aborted: tournament does not exist');
+          return current; // Abort if tournament doesn't exist
+        }
+        
+        // FIX: Normalize arrays that Firebase may have converted to null
+        current.matches = current.matches || [];
+        current.matchResults = current.matchResults || [];
+        current.players = current.players || [];
+        current.courses = current.courses || [];
+        current.teams = current.teams || { team1: [], team2: [] };
+        current.teams.team1 = current.teams.team1 || [];
+        current.teams.team2 = current.teams.team2 || [];
         
         // Apply the update function to the current database value
-        const updated = updater(current as Tournament);
-        return updated;
+        try {
+          const updated = updater(current as Tournament);
+          console.log('Transaction update applied successfully');
+          return updated;
+        } catch (updateErr) {
+          console.error('Error in updater function:', updateErr);
+          throw updateErr;
+        }
       });
+      
+      console.log('Transaction result:', result.committed ? 'committed' : 'aborted');
       
       // Update local state with the committed value
       if (result.committed && result.snapshot.exists()) {
         const newData = result.snapshot.val() as Tournament;
+        
+        // Normalize the snapshot data too
+        newData.matches = newData.matches || [];
+        newData.matchResults = newData.matchResults || [];
+        newData.players = newData.players || [];
+        newData.courses = newData.courses || [];
+        newData.teams = newData.teams || { team1: [], team2: [] };
+        newData.teams.team1 = newData.teams.team1 || [];
+        newData.teams.team2 = newData.teams.team2 || [];
+        
         setTData(newData);
+        console.log('Local state updated successfully');
         return newData;
       }
       
+      console.warn('Transaction not committed or snapshot does not exist');
       return tData;
     } catch (err) {
-      console.error('Transaction failed:', err);
+      console.error('Transaction failed with error:', err);
+      console.error('Error details:', JSON.stringify(err, null, 2));
+      
       // Reload from database to get latest state
-      const latest = await loadTournament(tournId);
-      if (latest) setTData(latest);
+      try {
+        const latest = await loadTournament(tournId);
+        if (latest) {
+          console.log('Reloaded tournament data after error');
+          setTData(latest);
+        }
+      } catch (reloadErr) {
+        console.error('Failed to reload tournament:', reloadErr);
+      }
+      
       throw err;
     }
   };
@@ -952,9 +1016,9 @@ export default function GolfScoringApp() {
     try {
       await updateTournament(d=>({
         ...d,
-        matches:d.matches.map(mx=>mx.id===activeMatchId?{...mx,completed:true}:mx),
+        matches:(d.matches||[]).map(mx=>mx.id===activeMatchId?{...mx,completed:true}:mx),
         matchResults:[...(d.matchResults||[]).filter(r=>r.matchId!==activeMatchId),result],
-        players:d.players.map(p=>{
+        players:(d.players||[]).map(p=>{
           if(!allIds.includes(p.id)) return p;
           const isT1=t1Ids.includes(p.id);
           const myTeam=isT1?'team1':'team2';
@@ -978,7 +1042,7 @@ export default function GolfScoringApp() {
   };
 
   const addCourse = async (course: Course) => {
-    await updateTournament(d=>({...d,courses:[...d.courses.filter(c=>c.id!==course.id),course]}));
+    await updateTournament(d=>({...d,courses:[...(d.courses||[]).filter(c=>c.id!==course.id),course]}));
     setManualCourse({id:'',name:'',location:'',tees:[blankTee()]});
     setScreen('admin');
   };
@@ -1173,7 +1237,7 @@ export default function GolfScoringApp() {
             <h2 className="font-bebas font-bold text-white text-lg">Players</h2>
             <Btn color="green" sm onClick={async()=>{
               try {
-                await updateTournament(d=>({...d,players:[...d.players,{id:'p'+Date.now(),name:'New Player',handicapIndex:0,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}}]}));
+                await updateTournament(d=>({...d,players:[...(d.players||[]),{id:'p'+Date.now(),name:'New Player',handicapIndex:0,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}}]}));
               } catch (err) {
                 console.error('Failed to add player:', err);
                 alert('Error adding player. Please try again.');
@@ -1185,20 +1249,20 @@ export default function GolfScoringApp() {
           <div className="space-y-2">
             {(tData.players??[]).map(p=>(
               <div key={p.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-white/8 flex-wrap" style={{background:'rgba(255,255,255,0.04)'}}>
-                <input value={p.name} onChange={e=>updateTournament(d=>({...d,players:d.players.map(x=>x.id===p.id?{...x,name:e.target.value}:x)}))}
+                <input value={p.name} onChange={e=>updateTournament(d=>({...d,players:(d.players||[]).map(x=>x.id===p.id?{...x,name:e.target.value}:x)}))}
                   className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-white text-sm font-bold border border-white/10 outline-none" style={{background:'rgba(255,255,255,0.07)',minWidth:'80px'}}/>
                 <span className="text-white/30 text-xs">HI:</span>
-                <input type="number" value={p.handicapIndex} onChange={e=>updateTournament(d=>({...d,players:d.players.map(x=>x.id===p.id?{...x,handicapIndex:parseFloat(e.target.value)||0}:x)}))}
+                <input type="number" value={p.handicapIndex} onChange={e=>updateTournament(d=>({...d,players:(d.players||[]).map(x=>x.id===p.id?{...x,handicapIndex:parseFloat(e.target.value)||0}:x)}))}
                   className="w-14 px-2 py-1.5 rounded-lg text-white text-sm text-center border border-white/10 outline-none" style={{background:'rgba(255,255,255,0.07)'}}/>
                 {tee&&<span className="text-xs text-[#C9A227] font-bold">HC {courseHcp(p.handicapIndex,tee.slope)}</span>}
-                <button onClick={()=>updateTournament(d=>({...d,teams:{team1:d.teams.team1.includes(p.id)?d.teams.team1.filter(x=>x!==p.id):[...d.teams.team1.filter(x=>x!==p.id),p.id],team2:d.teams.team2.filter(x=>x!==p.id)}}))}
+                <button onClick={()=>updateTournament(d=>({...d,teams:{team1:(d.teams.team1||[]).includes(p.id)?(d.teams.team1||[]).filter(x=>x!==p.id):[...(d.teams.team1||[]).filter(x=>x!==p.id),p.id],team2:(d.teams.team2||[]).filter(x=>x!==p.id)}}))}
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team1.includes(p.id)?'bg-blue-600 text-white border-blue-500':'border-white/10 text-white/40 hover:border-blue-500/50'}`}>{tData.teamNames.team1}</button>
-                <button onClick={()=>updateTournament(d=>({...d,teams:{team2:d.teams.team2.includes(p.id)?d.teams.team2.filter(x=>x!==p.id):[...d.teams.team2.filter(x=>x!==p.id),p.id],team1:d.teams.team1.filter(x=>x!==p.id)}}))}
+                <button onClick={()=>updateTournament(d=>({...d,teams:{team2:(d.teams.team2||[]).includes(p.id)?(d.teams.team2||[]).filter(x=>x!==p.id):[...(d.teams.team2||[]).filter(x=>x!==p.id),p.id],team1:(d.teams.team1||[]).filter(x=>x!==p.id)}}))}
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team2.includes(p.id)?'bg-red-600 text-white border-red-500':'border-white/10 text-white/40 hover:border-red-500/50'}`}>{tData.teamNames.team2}</button>
                 <button onClick={async()=>{
                   if (!confirm(`Delete ${p.name}? This cannot be undone.`)) return;
                   try {
-                    await updateTournament(d=>({...d,players:d.players.filter(x=>x.id!==p.id),teams:{team1:d.teams.team1.filter(x=>x!==p.id),team2:d.teams.team2.filter(x=>x!==p.id)}}));
+                    await updateTournament(d=>({...d,players:(d.players||[]).filter(x=>x.id!==p.id),teams:{team1:(d.teams.team1||[]).filter(x=>x!==p.id),team2:(d.teams.team2||[]).filter(x=>x!==p.id)}}));
                   } catch (err) {
                     console.error('Failed to delete player:', err);
                     alert('Error deleting player. Please try again.');
@@ -1231,7 +1295,7 @@ export default function GolfScoringApp() {
                 <button onClick={async()=>{
                   if (!confirm(`Delete ${c.name}? This cannot be undone.`)) return;
                   try {
-                    await updateTournament(d=>({...d,courses:d.courses.filter(x=>x.id!==c.id)}));
+                    await updateTournament(d=>({...d,courses:(d.courses||[]).filter(x=>x.id!==c.id)}));
                   } catch (err) {
                     console.error('Failed to delete course:', err);
                     alert('Error deleting course. Please try again.');
@@ -1353,7 +1417,7 @@ export default function GolfScoringApp() {
       const setMatchCourseTee = async (val: string) => {
         const [cid,tid]=val.split('::');
         try {
-          await updateTournament(d=>({...d,matches:d.matches.map(mx=>{
+          await updateTournament(d=>({...d,matches:(d.matches||[]).map(mx=>{
             if(mx.id!==m.id) return mx;
             const newTee=tData.courses.find(c=>c.id===cid)?.tees.find(t=>t.name===tid)??null;
             const newHcps: Record<string,number>={};
@@ -1370,7 +1434,7 @@ export default function GolfScoringApp() {
 
       const setMatchPairing = async (pk: string, slot: number, playerId: string) => {
         try {
-          await updateTournament(d=>({...d,matches:d.matches.map(mx=>{
+          await updateTournament(d=>({...d,matches:(d.matches||[]).map(mx=>{
             if(mx.id!==m.id) return mx;
             const newPairs={...mx.pairings};
             if(isSgl){newPairs[pk]=[playerId].filter(Boolean);}
@@ -1466,7 +1530,7 @@ export default function GolfScoringApp() {
               {role==='admin'&&<button onClick={async()=>{
                 if (!confirm(`Delete this ${FORMATS[m.format]?.name} match? This cannot be undone.`)) return;
                 try {
-                  await updateTournament(d=>({...d,matches:d.matches.filter(x=>x.id!==m.id)}));
+                  await updateTournament(d=>({...d,matches:(d.matches||[]).filter(x=>x.id!==m.id)}));
                 } catch (err) {
                   console.error('Failed to delete match:', err);
                   alert('Error deleting match. Please try again.');
@@ -1568,7 +1632,8 @@ export default function GolfScoringApp() {
                 pairings,pairingHcps,completed:false,courseId:f.courseId,teeId:f.teeId,
               };
               try {
-                await updateTournament(d=>({...d,matches:[...d.matches,m]}));
+                // FIX: Handle Firebase converting empty arrays to null
+                await updateTournament(d=>({...d,matches:[...(d.matches||[]),m]}));
                 setShowMatchBuilder(false);
               } catch (err) {
                 console.error('Failed to add match:', err);
