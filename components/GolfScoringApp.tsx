@@ -6,7 +6,7 @@ import {
   Check, Flag, Lock, Users, LogOut, Shield, ChevronDown
 } from 'lucide-react';
 import { db } from '@/Lib/firebase';
-import { ref, onValue, set, get } from 'firebase/database';
+import { ref, onValue, set, get, update, runTransaction } from 'firebase/database';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Hole { h: number; par: number; yards: number; rank: number; }
@@ -553,10 +553,20 @@ export default function GolfScoringApp() {
   }, [screen, tData?.matches?.length]);
 
   // ── Firebase CRUD ────────────────────────────────────────────────────────────
+  // ─── Firebase Operations (Concurrent-Safe) ────────────────────────────────────
   const loadTournament = async (id: string) => { const s=await get(ref(db,`tournaments/${id}`)); return s.val() as Tournament|null; };
   const saveTournament = async (data: Tournament, id=tournId) => { await set(ref(db,`tournaments/${id}`),data); };
   const loadMatchScores = async (mid: string) => { const s=await get(ref(db,`scores/${tournId}/${mid}`)); return (s.val() as Record<string,(number|null)[]>) ?? {}; };
-  const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => { await set(ref(db,`scores/${tournId}/${mid}`),scores); };
+  
+  // FIXED: Use update() instead of set() to prevent overwriting concurrent score updates
+  const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => { 
+    try {
+      await update(ref(db,`scores/${tournId}/${mid}`), scores);
+    } catch (err) {
+      console.error('Error saving scores:', err);
+      throw err;
+    }
+  };
   const loadAllMatchScores = async (): Promise<Record<string,Record<string,(number|null)[]>>> => {
     if (!tData?.matches) return {};
     const result: Record<string,Record<string,(number|null)[]>> = {};
@@ -604,9 +614,37 @@ export default function GolfScoringApp() {
   };
 
   // ── Tournament mutation ──────────────────────────────────────────────────────
+  // ─── Tournament Updates (Transaction-Safe) ────────────────────────────────────
+  // FIXED: Use Firebase transactions to prevent race conditions when multiple admins edit simultaneously
   const updateTournament = async (updater: (d:Tournament)=>Tournament) => {
     if (!tData) return;
-    const next = updater(tData); setTData(next); await saveTournament(next); return next;
+    
+    try {
+      // Use runTransaction for atomic read-modify-write operations
+      const tournRef = ref(db, `tournaments/${tournId}`);
+      const result = await runTransaction(tournRef, (current) => {
+        if (!current) return current; // Abort if tournament doesn't exist
+        
+        // Apply the update function to the current database value
+        const updated = updater(current as Tournament);
+        return updated;
+      });
+      
+      // Update local state with the committed value
+      if (result.committed && result.snapshot.exists()) {
+        const newData = result.snapshot.val() as Tournament;
+        setTData(newData);
+        return newData;
+      }
+      
+      return tData;
+    } catch (err) {
+      console.error('Transaction failed:', err);
+      // Reload from database to get latest state
+      const latest = await loadTournament(tournId);
+      if (latest) setTData(latest);
+      throw err;
+    }
   };
 
   // ── Tee helpers ──────────────────────────────────────────────────────────────
@@ -835,7 +873,16 @@ export default function GolfScoringApp() {
       team1HolesWon:ms.t1Holes,team2HolesWon:ms.t2Holes,
       leader:ms.leader,playerSkins:ms.playerSkins,completedAt:new Date().toISOString(),
     };
-    await saveMatchScores(activeMatchId!,localScores);
+    
+    // CRITICAL: Save scores first, then mark match complete
+    // This order ensures scores are saved even if the tournament update fails
+    try {
+      await saveMatchScores(activeMatchId!,localScores);
+    } catch (err) {
+      console.error('Failed to save match scores:', err);
+      alert('Error saving scores. Please try again.');
+      return;
+    }
 
     const t1Ids = ['t1p1','t1p2','t1p3','t1p4'].flatMap(k=>m.pairings[k]??[]).filter(Boolean);
     const t2Ids = ['t2p1','t2p2','t2p3','t2p4'].flatMap(k=>m.pairings[k]??[]).filter(Boolean);
@@ -901,27 +948,33 @@ export default function GolfScoringApp() {
       }
     }
 
-    await updateTournament(d=>({
-      ...d,
-      matches:d.matches.map(mx=>mx.id===activeMatchId?{...mx,completed:true}:mx),
-      matchResults:[...(d.matchResults||[]).filter(r=>r.matchId!==activeMatchId),result],
-      players:d.players.map(p=>{
-        if(!allIds.includes(p.id)) return p;
-        const isT1=t1Ids.includes(p.id);
-        const myTeam=isT1?'team1':'team2';
-        return {
-          ...p,
-          stats:{
-            matchesPlayed:(p.stats?.matchesPlayed||0)+1,
-            matchesWon:(p.stats?.matchesWon||0)+(winnerTeam===myTeam?1:0),
-            pointsContributed:(p.stats?.pointsContributed||0)+(playerPointsContrib[p.id]||0),
-            netUnderPar:(p.stats?.netUnderPar||0)+(playerNetUnderPar[p.id]||0),
-            skinsWon:(p.stats?.skinsWon||0)+(ms.playerSkins[p.id]||0),
-          }
-        };
-      }),
-    }));
-    setActiveMatchId(null);setLocalScores({});setScreen('tournament');
+    // CRITICAL: Use transaction to prevent race conditions when marking match complete
+    try {
+      await updateTournament(d=>({
+        ...d,
+        matches:d.matches.map(mx=>mx.id===activeMatchId?{...mx,completed:true}:mx),
+        matchResults:[...(d.matchResults||[]).filter(r=>r.matchId!==activeMatchId),result],
+        players:d.players.map(p=>{
+          if(!allIds.includes(p.id)) return p;
+          const isT1=t1Ids.includes(p.id);
+          const myTeam=isT1?'team1':'team2';
+          return {
+            ...p,
+            stats:{
+              matchesPlayed:(p.stats?.matchesPlayed||0)+1,
+              matchesWon:(p.stats?.matchesWon||0)+(winnerTeam===myTeam?1:0),
+              pointsContributed:(p.stats?.pointsContributed||0)+(playerPointsContrib[p.id]||0),
+              netUnderPar:(p.stats?.netUnderPar||0)+(playerNetUnderPar[p.id]||0),
+              skinsWon:(p.stats?.skinsWon||0)+(ms.playerSkins[p.id]||0),
+            }
+          };
+        }),
+      }));
+      setActiveMatchId(null);setLocalScores({});setScreen('tournament');
+    } catch (err) {
+      console.error('Failed to finalize match:', err);
+      alert('Error finalizing match. Your scores are saved, but please try completing the match again.');
+    }
   };
 
   const addCourse = async (course: Course) => {
