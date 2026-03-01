@@ -240,7 +240,7 @@ const matchplayStrokes = (hcp1: number, hcp2: number, rank: number) => {
 
 // Best Ball: Calculate individual player strokes based on 90% allowance
 const bestBallStrokes = (m: Match, rank: number, tee: Tee, players: Player[]): Record<string,number> => {
-  const allPlayerIds = Object.values(m.pairings).flat().filter(Boolean);
+  const allPlayerIds = Object.values(m.pairings||{}).flat().filter(Boolean);
   
   // Calculate 90% of course handicap for each player
   const playerHcps = allPlayerIds.map(id => {
@@ -267,11 +267,11 @@ const bestBallStrokes = (m: Match, rank: number, tee: Tee, players: Player[]): R
 };
 
 const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
-  const vals = Object.values(pHcps);
+  const vals = Object.values(pHcps||{});
   if (!vals.length) return {} as Record<string,number>;
   const min = Math.min(...vals);
   const out: Record<string,number> = {};
-  for (const [k,hcp] of Object.entries(pHcps)) {
+  for (const [k,hcp] of Object.entries(pHcps||{})) {
     const diff = hcp - min;
     // Base strokes (full 18s) + extra stroke if rank is within remainder
     const baseStrokes = Math.floor(diff / 18);
@@ -311,7 +311,7 @@ const calcGlobalSkinsForHole = (
     const isSingles = fmt?.ppp === 1;
     
     // Get all pairing keys for this match
-    const allPkKeys = Object.keys(m.pairings).filter(k => (m.pairings[k]?.length ?? 0) > 0);
+    const allPkKeys = Object.keys(m.pairings||{}).filter(k => (m.pairings[k]?.length ?? 0) > 0);
     
     for (const pk of allPkKeys) {
       const ids = m.pairings[pk] ?? [];
@@ -507,7 +507,7 @@ export default function GolfScoringApp() {
       const {pairings: emptyP, pairingHcps: emptyH} = getEmptyPairings(m.format);
       return {
         ...m,
-        pairings:    m.pairings    ? Object.fromEntries(Object.entries(m.pairings).map(([k,v])=>[k,v??[]])) : emptyP,
+        pairings:    m.pairings    ? Object.fromEntries(Object.entries(m.pairings||{}).map(([k,v])=>[k,v??[]])) : emptyP,
         pairingHcps: m.pairingHcps ? Object.fromEntries(Object.entries(m.pairingHcps).map(([k,v])=>[k,v??0])) : emptyH,
       };
     }),
@@ -567,6 +567,18 @@ export default function GolfScoringApp() {
       data.teams = data.teams || { team1: [], team2: [] };
       data.teams.team1 = data.teams.team1 || [];
       data.teams.team2 = data.teams.team2 || [];
+      
+      // FIX: Normalize each match's pairings and pairingHcps
+      data.matches.forEach(m => {
+        m.pairings = m.pairings || {};
+        m.pairingHcps = m.pairingHcps || {};
+        // Ensure each pairing slot is an array
+        Object.keys(m.pairings).forEach(k => {
+          if (!Array.isArray(m.pairings[k])) {
+            m.pairings[k] = [];
+          }
+        });
+      });
     }
     
     return data;
@@ -659,6 +671,18 @@ export default function GolfScoringApp() {
         current.teams.team1 = current.teams.team1 || [];
         current.teams.team2 = current.teams.team2 || [];
         
+        // FIX: Normalize each match's pairings and pairingHcps
+        current.matches.forEach((m: any) => {
+          m.pairings = m.pairings || {};
+          m.pairingHcps = m.pairingHcps || {};
+          // Ensure each pairing slot is an array
+          Object.keys(m.pairings).forEach((k: string) => {
+            if (!Array.isArray(m.pairings[k])) {
+              m.pairings[k] = [];
+            }
+          });
+        });
+        
         // Apply the update function to the current database value
         try {
           const updated = updater(current as Tournament);
@@ -684,6 +708,17 @@ export default function GolfScoringApp() {
         newData.teams = newData.teams || { team1: [], team2: [] };
         newData.teams.team1 = newData.teams.team1 || [];
         newData.teams.team2 = newData.teams.team2 || [];
+        
+        // Normalize each match's pairings
+        newData.matches.forEach((m: any) => {
+          m.pairings = m.pairings || {};
+          m.pairingHcps = m.pairingHcps || {};
+          Object.keys(m.pairings).forEach((k: string) => {
+            if (!Array.isArray(m.pairings[k])) {
+              m.pairings[k] = [];
+            }
+          });
+        });
         
         setTData(newData);
         console.log('Local state updated successfully');
@@ -812,7 +847,7 @@ export default function GolfScoringApp() {
       });
       
       // Skins for Best Ball - use same player strokes
-      const allPkKeys = Object.keys(m.pairings);
+      const allPkKeys = Object.keys(m.pairings||{});
       const skinNets = allPkKeys.map(pk=>{
         const ids = m.pairings[pk] ?? [];
         const nets = ids.map(id => {
@@ -842,7 +877,7 @@ export default function GolfScoringApp() {
       const netA=rawA-t1, netB=rawB-t2;
       return {a,b,netA,netB,winner:netA<netB?'t1p':netB<netA?'t2p':'tie'};
     });
-    const allPkKeys = Object.keys(m.pairings);
+    const allPkKeys = Object.keys(m.pairings||{});
     const skinNets = allPkKeys.map(pk=>{
       const raw=pairRawScore(m,pk,hole,scores); if(raw==null) return null;
       return {pk,ids:m.pairings[pk]??[],net:raw-(skinSt[pk]||0)};
@@ -862,7 +897,7 @@ export default function GolfScoringApp() {
   ) => {
     if(!m||!tee) return {t1Holes:0,t2Holes:0,label:'AS',leader:null as string|null,playerSkins:{} as Record<string,number>};
     let t1=0,t2=0; const playerSkins: Record<string,number>={};
-    Object.values(m.pairings).flat().forEach(id=>{playerSkins[id]=0;});
+    Object.values(m.pairings||{}).flat().forEach(id=>{playerSkins[id]=0;});
     
     // Determine if we should use global skins (across all matches) or per-match skins
     const useGlobalSkins = allMatches && allMatches.length > 0 && allScores && getTeeFunc;
@@ -1002,7 +1037,7 @@ export default function GolfScoringApp() {
       const hd = tee?.holes.find(x=>x.h===actualHole);
       if (!hd) continue;
       const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
-      for (const pk of Object.keys(m.pairings)) {
+      for (const pk of Object.keys(m.pairings||{})) {
         const ids = (m.pairings[pk]??[]).filter(Boolean);
         if (!ids.length) continue;
         const raw = pairRawScore(m, pk, h, localScores);
@@ -1412,7 +1447,7 @@ export default function GolfScoringApp() {
       const isExpanded=expandedMatches[m.id]??false;
       const matchTee=getTeeForMatch(m);
       const matchCourseName=tData.courses.find(c=>c.id===(m.courseId??tData.activeCourseId))?.name??'';
-      const usedIds=Object.values(m.pairings).flat().filter(Boolean);
+      const usedIds=Object.values(m.pairings||{}).flat().filter(Boolean);
 
       const setMatchCourseTee = async (val: string) => {
         const [cid,tid]=val.split('::');
@@ -1421,7 +1456,7 @@ export default function GolfScoringApp() {
             if(mx.id!==m.id) return mx;
             const newTee=tData.courses.find(c=>c.id===cid)?.tees.find(t=>t.name===tid)??null;
             const newHcps: Record<string,number>={};
-            for(const [k,ids] of Object.entries(mx.pairings)){
+            for(const [k,ids] of Object.entries(mx.pairings||{})){
               newHcps[k]=(ids?.length&&newTee)?pairingPlayingHcp(ids,mx.format,newTee,d.players):0;
             }
             return{...mx,courseId:cid,teeId:tid,pairingHcps:newHcps};
@@ -1440,7 +1475,7 @@ export default function GolfScoringApp() {
             if(isSgl){newPairs[pk]=[playerId].filter(Boolean);}
             else{const arr=[...(newPairs[pk]??[])];arr[slot]=playerId||'';newPairs[pk]=arr.filter(Boolean);}
             const newHcps: Record<string,number>={};
-            for(const [k,ids] of Object.entries(newPairs)){
+            for(const [k,ids] of Object.entries(newPairs||{})){
               newHcps[k]=(ids?.length&&matchTee)?pairingPlayingHcp(ids,mx.format,matchTee,d.players):0;
             }
             return{...mx,pairings:newPairs,pairingHcps:newHcps};
@@ -1514,7 +1549,7 @@ export default function GolfScoringApp() {
               {role==='admin'&&!m.completed&&(
                 <Btn color="green" sm onClick={()=>{
                   const init: Record<string,(number|null)[]>={};
-                  Object.values(m.pairings).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                  Object.values(m.pairings||{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                   setLocalScores(init);setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>▶ Play</Btn>
               )}
@@ -1522,7 +1557,7 @@ export default function GolfScoringApp() {
                 <Btn color="blue" sm onClick={async()=>{
                   const saved=await loadMatchScores(m.id);
                   const init: Record<string,(number|null)[]>={};
-                  Object.values(m.pairings).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                  Object.values(m.pairings||{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                   setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
                   setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>Enter Scores</Btn>
@@ -1541,7 +1576,7 @@ export default function GolfScoringApp() {
                 <Btn color="ghost" sm onClick={async()=>{
                   const saved=await loadMatchScores(m.id);
                   const init: Record<string,(number|null)[]>={};
-                  Object.values(m.pairings).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                  Object.values(m.pairings||{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                   setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
                   setActiveMatchId(m.id);setCurrentHole(1);setEditingScores(true);setScreen('scoring');
                 }}>✏️</Btn>
@@ -1696,7 +1731,7 @@ export default function GolfScoringApp() {
             const ScorecardModal = () => {
               const [vscores,setVscores] = useState<Record<string,(number|null)[]>>({});
               useEffect(()=>{loadMatchScores(viewingMatchId).then(setVscores);},[]);
-              const allIds = Object.values(vm.pairings).flat().filter(Boolean);
+              const allIds = Object.values(vm.pairings||{}).flat().filter(Boolean);
               return (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{background:'rgba(0,0,0,0.85)'}} onClick={()=>setViewingMatchId(null)}>
                   <div className="w-full sm:max-w-4xl rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto" style={{background:'#0D1B2A',border:'1px solid rgba(255,255,255,0.1)'}} onClick={e=>e.stopPropagation()}>
@@ -2255,7 +2290,7 @@ export default function GolfScoringApp() {
       const pairingInfo: Record<string, { playerIds: string[]; handicap: number; format: string }> = {};
       courseMatches.forEach(match => {
         if (!match.pairings) return;
-        Object.entries(match.pairings).forEach(([pairingKey, playerIds]) => {
+        Object.entries(match.pairings||{}).forEach(([pairingKey, playerIds]) => {
           const globalKey = `${match.id}__${pairingKey}`;
           const playerHandicaps = playerIds.map(pid => {
             const player = tData.players?.find(p => p.id === pid);
@@ -2273,7 +2308,7 @@ export default function GolfScoringApp() {
       });
       
       // Find the lowest handicap pairing on this course (for relative stroke calculation)
-      const allHandicaps = Object.values(pairingInfo).map(p => p.handicap);
+      const allHandicaps = Object.values(pairingInfo||{}).map(p => p.handicap);
       const minHandicap = allHandicaps.length > 0 ? Math.min(...allHandicaps) : 0;
       
       for (let h = 1; h <= maxHoles; h++) {
