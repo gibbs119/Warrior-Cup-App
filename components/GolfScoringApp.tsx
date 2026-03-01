@@ -1171,7 +1171,14 @@ export default function GolfScoringApp() {
         <div className="rounded-2xl p-4 card-dark">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bebas font-bold text-white text-lg">Players</h2>
-            <Btn color="green" sm onClick={()=>updateTournament(d=>({...d,players:[...d.players,{id:'p'+Date.now(),name:'New Player',handicapIndex:0,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}}]}))}>
+            <Btn color="green" sm onClick={async()=>{
+              try {
+                await updateTournament(d=>({...d,players:[...d.players,{id:'p'+Date.now(),name:'New Player',handicapIndex:0,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}}]}));
+              } catch (err) {
+                console.error('Failed to add player:', err);
+                alert('Error adding player. Please try again.');
+              }
+            }}>
               <span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add</span>
             </Btn>
           </div>
@@ -1188,7 +1195,15 @@ export default function GolfScoringApp() {
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team1.includes(p.id)?'bg-blue-600 text-white border-blue-500':'border-white/10 text-white/40 hover:border-blue-500/50'}`}>{tData.teamNames.team1}</button>
                 <button onClick={()=>updateTournament(d=>({...d,teams:{team2:d.teams.team2.includes(p.id)?d.teams.team2.filter(x=>x!==p.id):[...d.teams.team2.filter(x=>x!==p.id),p.id],team1:d.teams.team1.filter(x=>x!==p.id)}}))}
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team2.includes(p.id)?'bg-red-600 text-white border-red-500':'border-white/10 text-white/40 hover:border-red-500/50'}`}>{tData.teamNames.team2}</button>
-                <button onClick={()=>updateTournament(d=>({...d,players:d.players.filter(x=>x.id!==p.id),teams:{team1:d.teams.team1.filter(x=>x!==p.id),team2:d.teams.team2.filter(x=>x!==p.id)}}))}
+                <button onClick={async()=>{
+                  if (!confirm(`Delete ${p.name}? This cannot be undone.`)) return;
+                  try {
+                    await updateTournament(d=>({...d,players:d.players.filter(x=>x.id!==p.id),teams:{team1:d.teams.team1.filter(x=>x!==p.id),team2:d.teams.team2.filter(x=>x!==p.id)}}));
+                  } catch (err) {
+                    console.error('Failed to delete player:', err);
+                    alert('Error deleting player. Please try again.');
+                  }
+                }}
                   className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>
               </div>
             ))}
@@ -1213,7 +1228,15 @@ export default function GolfScoringApp() {
                   <div className="font-bold text-white text-sm">{c.name}</div>
                   {c.location&&<div className="text-xs text-white/30">{c.location}</div>}
                 </div>
-                <button onClick={()=>updateTournament(d=>({...d,courses:d.courses.filter(x=>x.id!==c.id)}))}
+                <button onClick={async()=>{
+                  if (!confirm(`Delete ${c.name}? This cannot be undone.`)) return;
+                  try {
+                    await updateTournament(d=>({...d,courses:d.courses.filter(x=>x.id!==c.id)}));
+                  } catch (err) {
+                    console.error('Failed to delete course:', err);
+                    alert('Error deleting course. Please try again.');
+                  }
+                }}
                   className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3 h-3"/></button>
               </div>
               <div className="flex gap-2 flex-wrap">
@@ -1327,31 +1350,41 @@ export default function GolfScoringApp() {
       const matchCourseName=tData.courses.find(c=>c.id===(m.courseId??tData.activeCourseId))?.name??'';
       const usedIds=Object.values(m.pairings).flat().filter(Boolean);
 
-      const setMatchCourseTee = (val: string) => {
+      const setMatchCourseTee = async (val: string) => {
         const [cid,tid]=val.split('::');
-        updateTournament(d=>({...d,matches:d.matches.map(mx=>{
-          if(mx.id!==m.id) return mx;
-          const newTee=tData.courses.find(c=>c.id===cid)?.tees.find(t=>t.name===tid)??null;
-          const newHcps: Record<string,number>={};
-          for(const [k,ids] of Object.entries(mx.pairings)){
-            newHcps[k]=(ids?.length&&newTee)?pairingPlayingHcp(ids,mx.format,newTee,d.players):0;
-          }
-          return{...mx,courseId:cid,teeId:tid,pairingHcps:newHcps};
-        })}));
+        try {
+          await updateTournament(d=>({...d,matches:d.matches.map(mx=>{
+            if(mx.id!==m.id) return mx;
+            const newTee=tData.courses.find(c=>c.id===cid)?.tees.find(t=>t.name===tid)??null;
+            const newHcps: Record<string,number>={};
+            for(const [k,ids] of Object.entries(mx.pairings)){
+              newHcps[k]=(ids?.length&&newTee)?pairingPlayingHcp(ids,mx.format,newTee,d.players):0;
+            }
+            return{...mx,courseId:cid,teeId:tid,pairingHcps:newHcps};
+          })}));
+        } catch (err) {
+          console.error('Failed to update course/tee:', err);
+          alert('Error updating course. Please try again.');
+        }
       };
 
-      const setMatchPairing = (pk: string, slot: number, playerId: string) => {
-        updateTournament(d=>({...d,matches:d.matches.map(mx=>{
-          if(mx.id!==m.id) return mx;
-          const newPairs={...mx.pairings};
-          if(isSgl){newPairs[pk]=[playerId].filter(Boolean);}
-          else{const arr=[...(newPairs[pk]??[])];arr[slot]=playerId||'';newPairs[pk]=arr.filter(Boolean);}
-          const newHcps: Record<string,number>={};
-          for(const [k,ids] of Object.entries(newPairs)){
-            newHcps[k]=(ids?.length&&matchTee)?pairingPlayingHcp(ids,mx.format,matchTee,d.players):0;
-          }
-          return{...mx,pairings:newPairs,pairingHcps:newHcps};
-        })}));
+      const setMatchPairing = async (pk: string, slot: number, playerId: string) => {
+        try {
+          await updateTournament(d=>({...d,matches:d.matches.map(mx=>{
+            if(mx.id!==m.id) return mx;
+            const newPairs={...mx.pairings};
+            if(isSgl){newPairs[pk]=[playerId].filter(Boolean);}
+            else{const arr=[...(newPairs[pk]??[])];arr[slot]=playerId||'';newPairs[pk]=arr.filter(Boolean);}
+            const newHcps: Record<string,number>={};
+            for(const [k,ids] of Object.entries(newPairs)){
+              newHcps[k]=(ids?.length&&matchTee)?pairingPlayingHcp(ids,mx.format,matchTee,d.players):0;
+            }
+            return{...mx,pairings:newPairs,pairingHcps:newHcps};
+          })}));
+        } catch (err) {
+          console.error('Failed to update pairing:', err);
+          alert('Error updating pairing. Please try again.');
+        }
       };
 
       const playerOpts = (pool: Player[]) => [
@@ -1430,7 +1463,15 @@ export default function GolfScoringApp() {
                   setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>Enter Scores</Btn>
               )}
-              {role==='admin'&&<button onClick={()=>updateTournament(d=>({...d,matches:d.matches.filter(x=>x.id!==m.id)}))} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>}
+              {role==='admin'&&<button onClick={async()=>{
+                if (!confirm(`Delete this ${FORMATS[m.format]?.name} match? This cannot be undone.`)) return;
+                try {
+                  await updateTournament(d=>({...d,matches:d.matches.filter(x=>x.id!==m.id)}));
+                } catch (err) {
+                  console.error('Failed to delete match:', err);
+                  alert('Error deleting match. Please try again.');
+                }
+              }} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>}
               {m.completed&&<Btn color="ghost" sm onClick={()=>setViewingMatchId(m.id)}>📋 Card</Btn>}
               {m.completed&&role==='admin'&&(
                 <Btn color="ghost" sm onClick={async()=>{
@@ -1520,14 +1561,19 @@ export default function GolfScoringApp() {
             {fmt.perHole ? '0.5 pts — winner of most holes' : `${pts} pts available`}
           </div>
           <div className="flex gap-2">
-            <Btn color="gold" onClick={()=>{
+            <Btn color="gold" onClick={async()=>{
               const {pairings,pairingHcps} = getEmptyPairings(f.format);
               const m: Match={
                 id:'m'+Date.now(),format:f.format,startHole:f.startHole,holes:f.holes,
                 pairings,pairingHcps,completed:false,courseId:f.courseId,teeId:f.teeId,
               };
-              updateTournament(d=>({...d,matches:[...d.matches,m]}));
-              setShowMatchBuilder(false);
+              try {
+                await updateTournament(d=>({...d,matches:[...d.matches,m]}));
+                setShowMatchBuilder(false);
+              } catch (err) {
+                console.error('Failed to add match:', err);
+                alert('Error adding match. Please try again.');
+              }
             }}>Add Match</Btn>
             <Btn color="ghost" onClick={()=>setShowMatchBuilder(false)}>Cancel</Btn>
           </div>
