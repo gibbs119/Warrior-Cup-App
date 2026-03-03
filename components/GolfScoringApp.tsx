@@ -1619,11 +1619,23 @@ export default function GolfScoringApp() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <PairingPicker pk="t1p1" label={`${tData.teamNames.team1} — Pair 1`} pool={t1pool} isT1 oppPk="t2p1"/>
-                  <PairingPicker pk="t2p1" label={`${tData.teamNames.team2} — Pair 1`} pool={t2pool} isT1={false} oppPk="t1p1"/>
-                  <PairingPicker pk="t1p2" label={`${tData.teamNames.team1} — Pair 2`} pool={t1pool} isT1 oppPk="t2p2"/>
-                  <PairingPicker pk="t2p2" label={`${tData.teamNames.team2} — Pair 2`} pool={t2pool} isT1={false} oppPk="t1p2"/>
+                <div className="space-y-3">
+                  {/* Pairing 1 */}
+                  <div className="p-3 rounded-xl border border-white/10" style={{background:'rgba(255,255,255,0.04)'}}>
+                    <div className="text-xs font-bold text-white/40 mb-2">Pairing 1</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <PairingPicker pk="t1p1" label={tData.teamNames.team1} pool={t1pool} isT1 oppPk="t2p1"/>
+                      <PairingPicker pk="t2p1" label={tData.teamNames.team2} pool={t2pool} isT1={false} oppPk="t1p1"/>
+                    </div>
+                  </div>
+                  {/* Pairing 2 */}
+                  <div className="p-3 rounded-xl border border-white/10" style={{background:'rgba(255,255,255,0.04)'}}>
+                    <div className="text-xs font-bold text-white/40 mb-2">Pairing 2</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <PairingPicker pk="t1p2" label={tData.teamNames.team1} pool={t1pool} isT1 oppPk="t2p2"/>
+                      <PairingPicker pk="t2p2" label={tData.teamNames.team2} pool={t2pool} isT1={false} oppPk="t1p2"/>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1770,7 +1782,7 @@ export default function GolfScoringApp() {
                             const total=scores.filter((v): v is number=>v!=null).reduce((a,b)=>a+b,0);
                             return (
                               <tr key={id} className="border-b border-white/5" style={{background:ri%2===0?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.01)'}}>
-                                <td className={`p-2 font-bold sticky left-0 ${isT1?'text-blue-300':'text-red-300'}`} style={{background:ri%2===0?'rgba(13,27,42,0.97)':'rgba(13,27,42,0.95)'}}>{p?.name??id}</td>
+                                <td className={`p-2 font-bold sticky left-0 truncate max-w-[120px] ${isT1?'text-blue-300':'text-red-300'}`} style={{background:ri%2===0?'rgba(13,27,42,0.97)':'rgba(13,27,42,0.95)'}}>{p?.name??id}</td>
                                 {Array.from({length:vm.holes},(_,i)=>i+1).map(h=>{
                                   const sc=scores[h-1];
                                   const ah=h+(vm.startHole-1);
@@ -1884,17 +1896,17 @@ export default function GolfScoringApp() {
       return (
         <div className={`p-4 rounded-2xl border-2 mb-3 ${isT1?'border-blue-500/40':'border-red-500/40'}`}
           style={{background:isT1?'rgba(30,64,175,0.15)':'rgba(185,28,28,0.15)'}}>
-          <div className="flex items-center justify-between mb-3">
-            <div>
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="flex-1 min-w-0">
               {isBestBall ? (
                 // Best Ball: Show individual player names with their strokes
-                <div className={`font-bebas font-bold text-lg ${isT1?'text-blue-200':'text-red-200'}`}>
+                <div className={`font-bebas font-bold text-lg leading-tight ${isT1?'text-blue-200':'text-red-200'}`}>
                   {ids.map((id, idx) => {
                     const p = players.find(x => x.id === id);
                     const hasStroke = playerStrokes[id] > 0;
                     return (
-                      <span key={id}>
-                        {p?.name || '?'}
+                      <span key={id} className="inline-block">
+                        <span className="truncate max-w-[140px] inline-block align-bottom">{p?.name || '?'}</span>
                         {hasStroke && <span className="text-yellow-400 ml-1 text-sm">★</span>}
                         {idx < ids.length - 1 && <span className="text-white/40 mx-1">&</span>}
                       </span>
@@ -1903,39 +1915,38 @@ export default function GolfScoringApp() {
                 </div>
               ) : (
                 // Other formats: Show team name with team strokes
-                <div className={`font-bebas font-bold text-lg ${isT1?'text-blue-200':'text-red-200'}`}>
+                <div className={`font-bebas font-bold text-lg leading-tight break-words ${isT1?'text-blue-200':'text-red-200'}`}>
                   {names.join(' & ')}
-                  {!fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm">{'★'.repeat(myStrokes)}</span>}
+                  {!fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)}</span>}
                 </div>
               )}
-              <div className="text-xs text-white/30">
+              <div className="text-xs text-white/30 mt-1">
                 {isBestBall ? (
                   // Best Ball: Show individual handicaps
-                  <span>
+                  <span className="flex flex-wrap gap-x-2 gap-y-0.5">
                     {ids.map((id, idx) => {
                       const p = players.find(x => x.id === id);
                       const ch = matchTee ? courseHcp(p?.handicapIndex ?? 0, matchTee.slope) : 0;
                       const hcp90 = Math.round(ch * 0.9);
                       return (
-                        <span key={id}>
-                          HC {hcp90} (90%)
-                          {idx < ids.length - 1 && <span className="mx-1">·</span>}
+                        <span key={id} className="whitespace-nowrap">
+                          HC {hcp90} (90%){idx < ids.length - 1 && <span className="ml-1">·</span>}
                         </span>
                       );
                     })}
-                    <span className="ml-2 text-white/20">· Rank {rank}</span>
+                    <span className="whitespace-nowrap text-white/20">Rank {rank}</span>
                   </span>
                 ) : (
-                  <span>
-                    HC {m.pairingHcps[pk]??0}
-                    {!fmt.perHole&&<> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</>}
-                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2">Skin +{skinSt[pk]}</span>}
+                  <span className="block">
+                    <span className="whitespace-nowrap">HC {m.pairingHcps[pk]??0}</span>
+                    {!fmt.perHole&&<span className="whitespace-nowrap"> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</span>}
+                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Skin +{skinSt[pk]}</span>}
                   </span>
                 )}
               </div>
             </div>
             {teamScore!=null&&(
-              <div className={`font-bebas font-black text-4xl ${isT1?'text-blue-200':'text-red-200'}`}>{teamScore}</div>
+              <div className={`font-bebas font-black text-4xl flex-shrink-0 ${isT1?'text-blue-200':'text-red-200'}`}>{teamScore}</div>
             )}
           </div>
           {isScramble?(
@@ -1964,9 +1975,9 @@ export default function GolfScoringApp() {
                 const hasStroke = isBestBall && playerStrokes[id] > 0;
                 return (
                   <div key={id}>
-                    <div className="text-xs text-white/40 mb-2 font-bold tracking-wider">
+                    <div className="text-xs text-white/40 mb-2 font-bold tracking-wider truncate">
                       {p?.name?.toUpperCase()}
-                      {hasStroke && <span className="text-yellow-400 ml-2">★ Gets stroke</span>}
+                      {hasStroke && <span className="text-yellow-400 ml-2 whitespace-nowrap">★ Gets stroke</span>}
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       {[1,2,3,4,5,6,7,8,9,10].map(n=>{
@@ -2082,14 +2093,15 @@ export default function GolfScoringApp() {
               ))}
             </div>
           ) : (
-            <div className="space-y-1">
-              <PairEntry pk="t1p1"/>
-              <PairEntry pk="t1p2"/>
-              <div className="text-center py-1">
-                <span className="text-white/20 text-xs font-bold tracking-widest">VS</span>
-              </div>
-              <PairEntry pk="t2p1"/>
-              <PairEntry pk="t2p2"/>
+            <div className="grid grid-cols-1 gap-3">
+              {matchPairs.map(([a,b],i)=>(
+                <div key={i} className="p-4 rounded-2xl card-dark">
+                  <div className="text-xs font-bold text-white/30 mb-3 tracking-widest uppercase">Pairing {i+1}</div>
+                  <PairEntry pk={a}/>
+                  <div className="text-center text-white/20 text-xs my-2 font-bold">VS</div>
+                  <PairEntry pk={b}/>
+                </div>
+              ))}
             </div>
           )}
 
