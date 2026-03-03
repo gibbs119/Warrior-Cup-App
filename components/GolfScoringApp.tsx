@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Trophy, Plus, Trash2, Save, Award, ChevronLeft, ChevronRight,
-  Check, Flag, Lock, Users, LogOut, Shield, ChevronDown
+  Check, Flag, Lock, Users, LogOut, Shield, ChevronDown, BookOpen,
+  Lightbulb, Info
 } from 'lucide-react';
 import { db } from '@/Lib/firebase';
 import { ref, onValue, set, get, update, runTransaction } from 'firebase/database';
@@ -239,21 +240,27 @@ const matchplayStrokes = (hcp1: number, hcp2: number, rank: number) => {
 };
 
 // Best Ball: Calculate individual player strokes based on 90% allowance
-const bestBallStrokes = (m: Match, rank: number, tee: Tee, players: Player[]): Record<string,number> => {
-  const allPlayerIds = Object.values(m.pairings||{}).flat().filter(Boolean);
+// Best Ball strokes: Calculate per pairing independently
+// Each pairing (e.g., Team 1 Pair 1 vs Team 2 Pair 1) has its own stroke allocation
+// Strokes are based on individual player handicaps within that specific pairing
+const bestBallStrokes = (m: Match, pairingKey: string, oppPairingKey: string, rank: number, tee: Tee, players: Player[]): Record<string,number> => {
+  // Get only the players in THIS pairing matchup
+  const thisPairingIds = (m.pairings[pairingKey] || []).filter(Boolean);
+  const oppPairingIds = (m.pairings[oppPairingKey] || []).filter(Boolean);
+  const allPairingIds = [...thisPairingIds, ...oppPairingIds];
   
-  // Calculate 90% of course handicap for each player
-  const playerHcps = allPlayerIds.map(id => {
+  // Calculate 90% of course handicap for each player in this pairing
+  const playerHcps = allPairingIds.map(id => {
     const p = players.find(x => x.id === id);
     const ch = courseHcp(p?.handicapIndex ?? 0, tee.slope);
     return { id, hcp90: ch * 0.9 };
   });
   
-  // Find the lowest 90% handicap
+  // Find the lowest 90% handicap within this pairing
   const lowest = Math.min(...playerHcps.map(p => p.hcp90));
   
-  // Calculate strokes for each player: 90% of difference from lowest, rounded
-  // Supports multiple strokes per hole (e.g., 25 stroke diff = 2 strokes on holes 1-7)
+  // Calculate strokes for each player relative to lowest in THIS pairing
+  // 90% of 90% = 81% total (USGA Best Ball rules)
   const strokes: Record<string,number> = {};
   for (const {id, hcp90} of playerHcps) {
     const diff = Math.round((hcp90 - lowest) * 0.9);
@@ -814,12 +821,14 @@ export default function GolfScoringApp() {
       return {matchupResults:[{a:'t1',b:'t2',winner,netA:t1Best,netB:t2Best,isTeamResult:true}],skinWinner,rank,hd};
     }
 
-    // Best Ball - Individual player strokes based on 90% allowance
+    // Best Ball - Individual player strokes within each pairing for match play
+    // Skins use pairing handicaps (team level) across all pairings
     if (m.format === 'bestball') {
-      const playerStrokes = bestBallStrokes(m, rank, tee, tData?.players ?? []);
-      
       const pairs = getMatchupPairs(m.format);
       const matchupResults = pairs.map(([a,b]) => {
+        // Calculate strokes for THIS pairing only (independent from other pairings)
+        const playerStrokes = bestBallStrokes(m, a, b, rank, tee, tData?.players ?? []);
+        
         // Get all individual player scores for each team
         const idsA = m.pairings[a] ?? [];
         const idsB = m.pairings[b] ?? [];
@@ -846,17 +855,19 @@ export default function GolfScoringApp() {
         return {a,b,netA,netB,winner:netA<netB?'t1p':netB<netA?'t2p':'tie'};
       });
       
-      // Skins for Best Ball - use same player strokes
+      // Skins for Best Ball - use PAIRING handicaps (team level), not individual player strokes
+      // Skins compete across all pairings, so use the team handicap differences
+      const skinStrokesPerPairing = skinsStrokes(m.pairingHcps, rank);
       const allPkKeys = Object.keys(m.pairings||{});
       const skinNets = allPkKeys.map(pk=>{
         const ids = m.pairings[pk] ?? [];
-        const nets = ids.map(id => {
-          const raw = scores[id]?.[hole-1];
-          if (raw == null) return null;
-          return raw - (playerStrokes[id] || 0);
-        }).filter((v): v is number => v != null);
-        if (!nets.length) return null;
-        return {pk, ids, net: Math.min(...nets)};
+        // Get best raw score from this pairing
+        const raws = ids.map(id => scores[id]?.[hole-1]).filter((v): v is number => v != null);
+        if (!raws.length) return null;
+        const bestRaw = Math.min(...raws);
+        // Apply team-level skin strokes to the best raw score
+        const net = bestRaw - (skinStrokesPerPairing[pk] || 0);
+        return {pk, ids, net};
       }).filter(Boolean) as {pk:string;ids:string[];net:number}[];
       
       let skinWinner=null;
@@ -1197,6 +1208,12 @@ export default function GolfScoringApp() {
           <Btn color="gold" onClick={createTournament} disabled={loading} className="w-full flex items-center justify-center gap-2 py-4">
             <Trophy className="w-5 h-5"/>
             <span className="font-bebas text-xl tracking-wider">Create Warrior Cup</span>
+          </Btn>
+
+          {/* Game Format Guide */}
+          <Btn color="ghost" onClick={()=>setScreen('glossary')} className="w-full flex items-center justify-center gap-2">
+            <BookOpen className="w-4 h-4"/>
+            <span>Game Format Guide</span>
           </Btn>
 
           <div className="text-center text-white/20 text-xs pt-1 tracking-[0.4em] font-bebas">GO BLUE</div>
@@ -1720,7 +1737,17 @@ export default function GolfScoringApp() {
           <Card className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bebas font-bold text-white text-xl">Match Schedule</h2>
-              {role==='admin'&&<Btn color="green" sm onClick={()=>setShowMatchBuilder(true)} disabled={showMatchBuilder}><span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add Match</span></Btn>}
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={()=>setScreen('glossary')}
+                  className="px-2.5 py-1.5 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5 transition-all flex items-center gap-1.5"
+                  title="Game Format Guide"
+                >
+                  <BookOpen className="w-3.5 h-3.5"/>
+                  <span className="hidden sm:inline">Guide</span>
+                </button>
+                {role==='admin'&&<Btn color="green" sm onClick={()=>setShowMatchBuilder(true)} disabled={showMatchBuilder}><span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add Match</span></Btn>}
+              </div>
             </div>
             {showMatchBuilder&&role==='admin'&&<div className="mb-4"><AddMatchForm/></div>}
             {!tData.matches?.length&&!showMatchBuilder&&(
@@ -1879,8 +1906,9 @@ export default function GolfScoringApp() {
       const isScramble=['scramble','alternateshot','modifiedscramble'].includes(m.format);
       const isBestBall = m.format === 'bestball';
       
-      // For Best Ball: calculate individual player strokes
-      const playerStrokes = isBestBall && matchTee ? bestBallStrokes(m, rank, matchTee, players) : {};
+      // For Best Ball: calculate individual player strokes WITHIN this pairing
+      // Each pairing is independent - strokes calculated relative to lowest in THAT pairing only
+      const playerStrokes = isBestBall && matchTee ? bestBallStrokes(m, pk, oppPk, rank, matchTee, players) : {};
       
       const names=ids.map(id=>players.find(p=>p.id===id)?.name||'?');
       const raw=ids.map(id=>localScores[id]?.[currentHole-1]).filter((v):v is number=>v!=null);
@@ -2549,6 +2577,347 @@ export default function GolfScoringApp() {
               })()}
             </Card>
           )}
+        </div>
+      </BG>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // GLOSSARY SCREEN - Game format explanations and rules
+  // ══════════════════════════════════════════════════════════════════════════════
+  if (screen==='glossary') {
+    const formatDetails: Record<string, {
+      name: string;
+      overview: string;
+      howToPlay: string[];
+      scoring: string[];
+      handicaps: string[];
+      skins: string[];
+      example: string;
+    }> = {
+      bestball: {
+        name: 'Best Ball',
+        overview: 'Each player plays their own ball throughout the hole. The best NET score from each team counts as the team score for that hole.',
+        howToPlay: [
+          'Each player plays their own ball from tee to green',
+          'All players complete the hole with their own ball',
+          'No picking up - everyone finishes the hole',
+          'Two pairings play against each other'
+        ],
+        scoring: [
+          '2 pairings per match (e.g., Pairing 1 vs Pairing 2)',
+          'Each pairing earns 1 point if they win the hole',
+          'Best NET score from each pairing determines the winner',
+          'Points accumulate over 9 or 18 holes'
+        ],
+        handicaps: [
+          'Individual player strokes calculated WITHIN each pairing only',
+          'Uses 90% of (90% of course handicap difference) = 81% total',
+          'Each pairing is independent - no cross-pairing comparison',
+          'Example: If lowest player in pairing has CH 8, player with CH 17 gets ~7 strokes',
+          'Strokes applied on hardest holes first (hole ranking)'
+        ],
+        skins: [
+          'Skins compete ACROSS all pairings (all 4 teams)',
+          'Uses TEAM/PAIRING handicaps, not individual player handicaps',
+          'Best NET score from all pairings wins the skin',
+          'Team handicap based on combined ability of both players',
+          'If tied, skin carries over to next hole'
+        ],
+        example: 'Hole 3 (Par 4, Rank 7): Team A players shoot 4 & 6. Player with 4 gets 1 stroke = net 3. Team B shoots 5 & 5. Player with first 5 gets no stroke = net 5. Team A wins hole with net 3.'
+      },
+      scramble: {
+        name: '2-Man Scramble',
+        overview: 'Both players hit from each spot, team picks the best shot, then both play from there. Repeat until hole is complete.',
+        howToPlay: [
+          'Both players tee off',
+          'Team chooses the best drive',
+          'Both players hit their second shot from the best drive location',
+          'Continue selecting best shot until ball is holed',
+          'Only one ball per team (but both players hit each shot)'
+        ],
+        scoring: [
+          '2 pairings per match',
+          'Each team records ONE score (their team score)',
+          'Best NET team score wins the hole',
+          '1 point per hole won'
+        ],
+        handicaps: [
+          'Team handicap = Average of both players × 75%',
+          'Example: Players with HI 12 and HI 20 = (12+20)/2 × 0.75 = 12 team HC',
+          'Strokes compared against opposing team',
+          'Difference allocated by hole ranking'
+        ],
+        skins: [
+          'All 4 teams compete with their best NET score',
+          'Team handicaps compared across all pairings',
+          'Lowest combined handicap team gets 0 strokes',
+          'Other teams get strokes based on difference',
+          'Best NET score wins the skin'
+        ],
+        example: 'Hole 1 (Par 4): Team picks best drive, best approach, best putt. Team shoots 4. With 2 team strokes, net = 2. Opposing team shoots 3 with 0 strokes = net 3. First team wins hole.'
+      },
+      modifiedscramble: {
+        name: 'Modified Scramble',
+        overview: 'Similar to scramble, but teams alternate which player\'s shot is used. Creates more strategy and involves both players equally.',
+        howToPlay: [
+          'Both players hit each shot',
+          'Team must alternate whose shot is selected',
+          'If Player A\'s drive is used, Player B\'s approach must be used',
+          'Forces balanced participation from both players',
+          'More strategic than regular scramble'
+        ],
+        scoring: [
+          'ALL 4 pairings compete together on each hole',
+          'Best NET score of all 4 teams wins the hole',
+          'Winner gets 0.5 points per hole',
+          'Competition is across all teams, not head-to-head pairings'
+        ],
+        handicaps: [
+          'Team handicap = Average of both players × 75%',
+          'Same as regular scramble calculation',
+          'Strokes applied to lowest team handicap',
+          'Difference spread across holes by ranking'
+        ],
+        skins: [
+          'Built into the format - same as match play',
+          'All 4 teams compete for each hole',
+          'Best NET score wins 0.5 points',
+          'No separate skins calculation',
+          'Very competitive format'
+        ],
+        example: 'All 4 teams play hole. Team scores: 3, 4, 5, 4 (net). Team with 3 wins 0.5 points. Other teams get 0 for that hole. Continue for all 9 or 18 holes.'
+      },
+      alternateshot: {
+        name: 'Alternate Shot (Foursomes)',
+        overview: 'Partners share one ball and alternate hitting shots. Player A hits odd shots (1st, 3rd, 5th), Player B hits even shots (2nd, 4th, 6th).',
+        howToPlay: [
+          'Partners alternate hitting the same ball',
+          'Player A tees off on odd-numbered holes',
+          'Player B tees off on even-numbered holes',
+          'Alternate every shot until ball is holed',
+          'Most challenging team format - requires teamwork'
+        ],
+        scoring: [
+          '2 pairings per match',
+          'Each team records ONE score (shared ball)',
+          'Best NET score between pairings wins the hole',
+          '1 point per hole won'
+        ],
+        handicaps: [
+          'Team handicap = Average of both players (100% of average)',
+          'More generous than scramble (100% vs 75%)',
+          'Example: HI 12 + HI 20 = (12+20)/2 = 16 team HC',
+          'Strokes applied based on difference vs opponent',
+          'Harder format needs more strokes'
+        ],
+        skins: [
+          'All 4 teams compete with team scores',
+          'Uses team handicap differences',
+          'Best NET score across all teams wins skin',
+          'Format difficulty makes skins very competitive'
+        ],
+        example: 'Par 4: Player A drives (210 yards). Player B hits approach (150 yards to green). Player A putts (3 feet past). Player B makes par putt. Team scores 4.'
+      },
+      singles: {
+        name: 'Singles (1v1 Match Play)',
+        overview: 'Traditional head-to-head matches. Each player from Team 1 plays against one player from Team 2 in individual matches.',
+        howToPlay: [
+          '4 separate matches: 1v1 battles',
+          'Each player plays their own ball',
+          'Match 1: Team 1 Player A vs Team 2 Player A',
+          'Match 2: Team 1 Player B vs Team 2 Player B',
+          'And so on for 4 total matches',
+          'Each match is independent'
+        ],
+        scoring: [
+          '4 matches × 1 point each = 4 total points available',
+          'Each match awards 1 point to the winner',
+          'Individual match play - best NET score wins hole',
+          'Points accumulate across all 4 matches',
+          'Team with most total points wins'
+        ],
+        handicaps: [
+          'Full course handicap difference',
+          '100% of handicap difference between the two players',
+          'Higher handicap player receives strokes',
+          'Strokes applied on hardest holes (by ranking)',
+          'Example: HC 8 vs HC 15 = higher player gets 7 strokes'
+        ],
+        skins: [
+          'All 4 matches compete together for skins',
+          'Uses each player\'s full course handicap',
+          'Best NET score across all 8 players wins skin',
+          'Handicap differences create competitive skins',
+          'Low handicappers can still win with scratch scores'
+        ],
+        example: 'Match 1: Player A (HC 8) vs Player B (HC 15). Player B gets 7 strokes. On hole ranked #3, Player B gets a stroke. Player A shoots 4, Player B shoots 5-1=4 net. Hole is tied.'
+      }
+    };
+
+    const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
+
+    return (
+      <BG>
+        <div className="sticky top-0 z-10 p-4 border-b border-white/10" style={{background:'#0D1B2A'}}>
+          <div className="max-w-2xl mx-auto flex items-center gap-3">
+            <button onClick={()=>setScreen(tData?'tournament':'home')} className="text-white/60 hover:text-white">
+              <ChevronLeft className="w-5 h-5"/>
+            </button>
+            <div>
+              <h1 className="font-bebas font-bold text-white text-2xl">Game Format Guide</h1>
+              <div className="text-xs text-white/40">How to play each format</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-2xl mx-auto p-4 space-y-3 pb-8 safe-bottom">
+          <Card className="p-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center flex-shrink-0">
+                <BookOpen className="w-5 h-5 text-blue-400"/>
+              </div>
+              <div>
+                <h2 className="font-bebas font-bold text-white text-lg">Understanding the Formats</h2>
+                <p className="text-sm text-white/60 mt-1">
+                  Each format has different rules for scoring, handicaps, and skins. Select a format below to learn more.
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {Object.entries(formatDetails).map(([key, details]) => (
+            <Card key={key} className="overflow-hidden">
+              <button
+                onClick={() => setSelectedFormat(selectedFormat === key ? null : key)}
+                className="w-full p-4 text-left flex items-center justify-between hover:bg-white/5 transition-colors"
+              >
+                <div>
+                  <div className="font-bebas font-bold text-white text-lg">{details.name}</div>
+                  <div className="text-xs text-white/40 mt-0.5">{FORMATS[key]?.desc}</div>
+                </div>
+                <ChevronDown className={`w-5 h-5 text-white/40 transition-transform ${selectedFormat === key ? 'rotate-180' : ''}`}/>
+              </button>
+
+              {selectedFormat === key && (
+                <div className="px-4 pb-4 space-y-4 border-t border-white/10">
+                  {/* Overview */}
+                  <div className="pt-4">
+                    <div className="text-sm text-white/80 leading-relaxed">
+                      {details.overview}
+                    </div>
+                  </div>
+
+                  {/* How to Play */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded bg-green-600/20 flex items-center justify-center">
+                        <span className="text-green-400 text-xs font-bold">1</span>
+                      </div>
+                      <h3 className="font-bold text-white text-sm">How to Play</h3>
+                    </div>
+                    <ul className="space-y-1.5 ml-8">
+                      {details.howToPlay.map((item, i) => (
+                        <li key={i} className="text-sm text-white/70 flex items-start gap-2">
+                          <span className="text-green-400 mt-0.5">•</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Scoring */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded bg-blue-600/20 flex items-center justify-center">
+                        <span className="text-blue-400 text-xs font-bold">2</span>
+                      </div>
+                      <h3 className="font-bold text-white text-sm">Scoring System</h3>
+                    </div>
+                    <ul className="space-y-1.5 ml-8">
+                      {details.scoring.map((item, i) => (
+                        <li key={i} className="text-sm text-white/70 flex items-start gap-2">
+                          <span className="text-blue-400 mt-0.5">•</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Handicaps */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded bg-purple-600/20 flex items-center justify-center">
+                        <span className="text-purple-400 text-xs font-bold">3</span>
+                      </div>
+                      <h3 className="font-bold text-white text-sm">Handicap Calculation</h3>
+                    </div>
+                    <ul className="space-y-1.5 ml-8">
+                      {details.handicaps.map((item, i) => (
+                        <li key={i} className="text-sm text-white/70 flex items-start gap-2">
+                          <span className="text-purple-400 mt-0.5">•</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Skins */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 rounded bg-yellow-600/20 flex items-center justify-center">
+                        <span className="text-yellow-400 text-xs font-bold">4</span>
+                      </div>
+                      <h3 className="font-bold text-white text-sm">Skins Calculation</h3>
+                    </div>
+                    <ul className="space-y-1.5 ml-8">
+                      {details.skins.map((item, i) => (
+                        <li key={i} className="text-sm text-white/70 flex items-start gap-2">
+                          <span className="text-yellow-400 mt-0.5">•</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Example */}
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <div className="flex items-start gap-2 mb-1">
+                      <Lightbulb className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5"/>
+                      <h3 className="font-bold text-yellow-400 text-xs uppercase tracking-wider">Example</h3>
+                    </div>
+                    <p className="text-sm text-white/70 leading-relaxed ml-6">
+                      {details.example}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </Card>
+          ))}
+
+          {/* General Info Card */}
+          <Card className="p-4">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5"/>
+              <div>
+                <h3 className="font-bold text-white text-sm mb-2">General Terms</h3>
+                <div className="space-y-2 text-sm text-white/70">
+                  <div>
+                    <span className="text-white font-semibold">Course Handicap (CH):</span> Your handicap index adjusted for the specific course and tee you're playing.
+                  </div>
+                  <div>
+                    <span className="text-white font-semibold">Net Score:</span> Your raw score minus any strokes you receive on that hole.
+                  </div>
+                  <div>
+                    <span className="text-white font-semibold">Hole Ranking:</span> Holes ranked 1-18 by difficulty. Stroke holes (hardest) get ranked 1, 3, 5, etc.
+                  </div>
+                  <div>
+                    <span className="text-white font-semibold">Skins:</span> Side competition where the best net score on each hole wins. If tied, the "skin" carries over.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
       </BG>
     );
