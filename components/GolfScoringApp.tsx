@@ -502,6 +502,7 @@ export default function GolfScoringApp() {
   const [editingScores, setEditingScores]     = useState(false);
   const [expandedMatches, setExpandedMatches] = useState<Record<string,boolean>>({});
   const [skinsPots, setSkinsPots] = useState<Record<string,number>>({});
+  const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
   const toggleExpanded = (mid: string) => setExpandedMatches(prev=>({...prev,[mid]:!prev[mid]}));
   const [manualCourse, setManualCourse] = useState<Course>({id:'',name:'',location:'',tees:[blankTee()]});
   const unsubRef = useRef<(()=>void)|null>(null);
@@ -1395,13 +1396,11 @@ export default function GolfScoringApp() {
       }
     };
 
-    const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
-
     return (
       <BG>
         <div className="sticky top-0 z-10 p-4 border-b border-white/10" style={{background:'#0D1B2A'}}>
           <div className="max-w-2xl mx-auto flex items-center gap-3">
-            <button onClick={()=>setScreen(tData?'tournament':'login')} className="text-white/60 hover:text-white">
+            <button onClick={()=>{setSelectedFormat(null);setScreen(tData?'tournament':'login');}} className="text-white/60 hover:text-white">
               <ChevronLeft className="w-5 h-5"/>
             </button>
             <div>
