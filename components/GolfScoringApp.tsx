@@ -1289,7 +1289,7 @@ function GolfScoringApp() {
   ) => {
     if(!m||!tee) return {t1Holes:0,t2Holes:0,label:'AS',leader:null as string|null,playerSkins:{} as Record<string,number>};
     let t1=0,t2=0; const playerSkins: Record<string,number>={};
-    Object.values(m.pairings??{}).flat().forEach(id=>{playerSkins[id]=0;});
+    Object.values(m.pairings??{}).filter(Array.isArray).flat().forEach(id=>{playerSkins[id]=0;});
     
     // Determine if we should use global skins (across all matches) or per-match skins
     const useGlobalSkins = allMatches && allMatches.length > 0 && allScores && getTeeFunc;
@@ -1610,15 +1610,16 @@ function GolfScoringApp() {
   // GLOSSARY SCREEN - Game format explanations and rules (no tData required)
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='glossary') {
-    const formatDetails: Record<string, {
-      name: string;
-      overview: string;
-      howToPlay: string[];
-      scoring: string[];
-      handicaps: string[];
-      skins: string[];
-      example: string;
-    }> = {
+    try {
+      const formatDetails: Record<string, {
+        name: string;
+        overview: string;
+        howToPlay: string[];
+        scoring: string[];
+        handicaps: string[];
+        skins: string[];
+        example: string;
+      }> = {
       bestball: {
         name: 'Best Ball',
         overview: 'Each player plays their own ball throughout the hole. The best NET score from each team counts as the team score for that hole.',
@@ -1870,7 +1871,7 @@ function GolfScoringApp() {
                       <h3 className="font-bold text-white text-sm">How to Play</h3>
                     </div>
                     <ul className="space-y-1.5 ml-8">
-                      {details.howToPlay.map((item, i) => (
+                      {(details.howToPlay??[]).map((item, i) => (
                         <li key={i} className="text-sm text-white/70 flex items-start gap-2">
                           <span className="text-green-400 mt-0.5">•</span>
                           <span>{item}</span>
@@ -1888,7 +1889,7 @@ function GolfScoringApp() {
                       <h3 className="font-bold text-white text-sm">Scoring System</h3>
                     </div>
                     <ul className="space-y-1.5 ml-8">
-                      {details.scoring.map((item, i) => (
+                      {(details.scoring??[]).map((item, i) => (
                         <li key={i} className="text-sm text-white/70 flex items-start gap-2">
                           <span className="text-blue-400 mt-0.5">•</span>
                           <span>{item}</span>
@@ -1906,7 +1907,7 @@ function GolfScoringApp() {
                       <h3 className="font-bold text-white text-sm">Handicap Calculation</h3>
                     </div>
                     <ul className="space-y-1.5 ml-8">
-                      {details.handicaps.map((item, i) => (
+                      {(details.handicaps??[]).map((item, i) => (
                         <li key={i} className="text-sm text-white/70 flex items-start gap-2">
                           <span className="text-purple-400 mt-0.5">•</span>
                           <span>{item}</span>
@@ -1924,7 +1925,7 @@ function GolfScoringApp() {
                       <h3 className="font-bold text-white text-sm">Skins Calculation</h3>
                     </div>
                     <ul className="space-y-1.5 ml-8">
-                      {details.skins.map((item, i) => (
+                      {(details.skins??[]).map((item, i) => (
                         <li key={i} className="text-sm text-white/70 flex items-start gap-2">
                           <span className="text-yellow-400 mt-0.5">•</span>
                           <span>{item}</span>
@@ -1974,6 +1975,18 @@ function GolfScoringApp() {
         </div>
       </BG>
     );
+    } catch (error) {
+      console.error('Glossary render error:', error);
+      return (
+        <BG>
+          <TopBar title="Glossary" back={()=>setScreen(tData?'tournament':'login')}/>
+          <div className="p-4 text-center">
+            <div className="text-white/50">Error loading glossary. Please try again.</div>
+            <Btn color="blue" onClick={()=>setScreen(tData?'tournament':'login')} className="mt-4">Go Back</Btn>
+          </div>
+        </BG>
+      );
+    }
   }
 
   if (!tData) return (
@@ -2266,7 +2279,7 @@ function GolfScoringApp() {
       const matchCourseName=(tData?.courses??[]).find(c=>c.id===(m.courseId??tData.activeCourseId))?.name??'';
       const pairings = m.pairings ?? {};
       const pairingHcps = m.pairingHcps ?? {};
-      const usedIds=Object.values(pairings).flat().filter(Boolean);
+      const usedIds=Object.values(pairings).filter(Array.isArray).flat().filter(Boolean);
 
       const setMatchCourseTee = async (val: string) => {
         const [cid,tid]=val.split('::');
@@ -2368,7 +2381,7 @@ function GolfScoringApp() {
               {role==='admin'&&!m.completed&&(
                 <Btn color="green" sm onClick={()=>{
                   const init: Record<string,(number|null)[]>={};
-                  Object.values(m.pairings??{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                  Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                   setLocalScores(init);setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>▶ Play</Btn>
               )}
@@ -2378,7 +2391,7 @@ function GolfScoringApp() {
                   try {
                     const saved=await loadMatchScores(m.id);
                     const init: Record<string,(number|null)[]>={};
-                    Object.values(m.pairings??{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                    Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                     setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
                     setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                   } finally {
@@ -2400,7 +2413,7 @@ function GolfScoringApp() {
                 <Btn color="ghost" sm onClick={async()=>{
                   const saved=await loadMatchScores(m.id);
                   const init: Record<string,(number|null)[]>={};
-                  Object.values(m.pairings??{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                  Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                   setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
                   setActiveMatchId(m.id);setCurrentHole(1);setEditingScores(true);setScreen('scoring');
                 }}>✏️</Btn>
@@ -2580,7 +2593,7 @@ function GolfScoringApp() {
             const ScorecardModal = () => {
               const [vscores,setVscores] = useState<Record<string,(number|null)[]>>({});
               useEffect(()=>{loadMatchScores(viewingMatchId).then(setVscores);},[]);
-              const allIds = Object.values(vm.pairings||{}).flat().filter(Boolean);
+              const allIds = Object.values(vm.pairings||{}).filter(Array.isArray).flat().filter(Boolean);
               return (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{background:'rgba(0,0,0,0.85)'}} onClick={()=>setViewingMatchId(null)}>
                   <div className="w-full sm:max-w-4xl rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto" style={{background:'#0D1B2A',border:'1px solid rgba(255,255,255,0.1)'}} onClick={e=>e.stopPropagation()}>
