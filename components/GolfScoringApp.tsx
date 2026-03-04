@@ -391,6 +391,7 @@ const bestBallStrokes = (m: Match, pairingKey: string, oppPairingKey: string, ra
 };
 
 const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
+  console.log(`      skinsStrokes called: pHcps=`, pHcps, `rank=${rank}`);
   const vals = Object.values(pHcps||{});
   if (!vals.length) return {} as Record<string,number>;
   const min = Math.min(...vals);
@@ -401,7 +402,9 @@ const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
     const baseStrokes = Math.floor(diff / 18);
     const extraStroke = (rank <= (diff % 18)) ? 1 : 0;
     out[k] = baseStrokes + extraStroke;
+    console.log(`        ${k}: hcp=${hcp}, diff=${diff}, base=${baseStrokes}, extra=${extraStroke}, total=${out[k]}`);
   }
+  console.log(`      skinsStrokes result:`, out);
   return out;
 };
 
@@ -2822,7 +2825,7 @@ function GolfScoringApp() {
                   <span className="block">
                     <span className="whitespace-nowrap">HC {m.pairingHcps[pk]??0}</span>
                     {!fmt.perHole&&<span className="whitespace-nowrap"> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</span>}
-                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Stroke +{skinSt[pk]}</span>}
+                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Skin +{skinSt[pk]}</span>}
                   </span>
                 )}
               </div>
