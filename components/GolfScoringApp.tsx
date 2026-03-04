@@ -424,6 +424,8 @@ const calcGlobalSkinsForHole = (
 ): SkinEntry | null => {
   const allEntries: SkinEntry[] = [];
   
+  console.log(`🏆 Calculating skins for hole ${hole}`);
+  
   for (const m of matches) {
     const tee = getTeeForMatch(m);
     if (!tee) continue;
@@ -434,11 +436,15 @@ const calcGlobalSkinsForHole = (
     const fmt = FORMATS[m.format];
     const isSingles = fmt?.ppp === 1;
     
+    console.log(`  Match ${m.id} (${fmt?.name}):`, { hasScores: Object.keys(scores).length > 0, holeData: hd });
+    
     // Get all pairing keys for this match
-    const allPkKeys = Object.keys(m.pairings??{}).filter(k => (m.pairings[k]?.length ?? 0) > 0);
+    const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
+    
+    console.log(`    Pairings:`, allPkKeys);
     
     for (const pk of allPkKeys) {
-      const ids = m.pairings[pk] ?? [];
+      const ids = (m.pairings??{})[pk] ?? [];
       if (ids.length === 0) continue;
       
       // Calculate raw score for this pairing on this hole
@@ -451,10 +457,12 @@ const calcGlobalSkinsForHole = (
         // Scramble/Modified Scramble/Alternate Shot/Greensomes: team score (single score for the pairing)
         const pid = ids[0];
         raw = scores[pid]?.[hole - 1] ?? null;
+        console.log(`      ${pk}: ids=${ids.join(',')}, using ${pid}, raw=${raw}, stroke=${skinSt[pk]||0}, net=${raw !== null ? raw - (skinSt[pk]||0) : 'null'}`);
       } else {
         // Best Ball: best of the pairing's scores
         const playerScores = ids.map(id => scores[id]?.[hole - 1]).filter((v): v is number => v != null);
         if (playerScores.length > 0) raw = Math.min(...playerScores);
+        console.log(`      ${pk}: ids=${ids.join(',')}, scores=[${ids.map(id=>scores[id]?.[hole-1]??'null').join(',')}], raw=${raw}, stroke=${skinSt[pk]||0}, net=${raw !== null ? raw - (skinSt[pk]||0) : 'null'}`);
       }
       
       if (raw == null) continue;
@@ -463,14 +471,22 @@ const calcGlobalSkinsForHole = (
     }
   }
   
+  console.log(`  Total entries: ${allEntries.length}`, allEntries.map(e => `${e.pk}:net${e.net}`).join(', '));
+  
   if (allEntries.length === 0) return null;
   
   // Find the lowest net score
   const best = Math.min(...allEntries.map(e => e.net));
   const winners = allEntries.filter(e => e.net === best);
   
+  console.log(`  Best net: ${best}, Winners: ${winners.length}`, winners.map(w => `${w.pk}:${w.playerIds.join('&')}`).join(', '));
+  
   // Only award skin if there's exactly one winner (no ties)
-  if (winners.length === 1) return winners[0];
+  if (winners.length === 1) {
+    console.log(`  ✅ Skin awarded to ${winners[0].pk} with net ${winners[0].net}`);
+    return winners[0];
+  }
+  console.log(`  ❌ No skin awarded (${winners.length === 0 ? 'no scores' : 'tie'})`);
   return null;
 };
 
@@ -1375,8 +1391,8 @@ function GolfScoringApp() {
       return;
     }
 
-    const t1Ids = ['t1p1','t1p2','t1p3','t1p4'].flatMap(k=>m.pairings[k]??[]).filter(Boolean);
-    const t2Ids = ['t2p1','t2p2','t2p3','t2p4'].flatMap(k=>m.pairings[k]??[]).filter(Boolean);
+    const t1Ids = ['t1p1','t1p2','t1p3','t1p4'].flatMap(k=>(m.pairings??{})[k]??[]).filter(Boolean);
+    const t2Ids = ['t2p1','t2p2','t2p3','t2p4'].flatMap(k=>(m.pairings??{})[k]??[]).filter(Boolean);
     const allIds = [...t1Ids,...t2Ids];
     const winnerTeam = matchupPts.team1>matchupPts.team2?'team1':matchupPts.team2>matchupPts.team1?'team2':null;
 
@@ -1977,12 +1993,23 @@ function GolfScoringApp() {
     );
     } catch (error) {
       console.error('Glossary render error:', error);
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
       return (
         <BG>
-          <TopBar title="Glossary" back={()=>setScreen(tData?'tournament':'login')}/>
+          <div className="sticky top-0 z-10 p-4 border-b border-white/10" style={{background:'#0D1B2A'}}>
+            <div className="max-w-2xl mx-auto flex items-center gap-3">
+              <button onClick={()=>setScreen(tData?'tournament':'login')} className="text-white/60 hover:text-white">
+                <ChevronLeft className="w-5 h-5"/>
+              </button>
+              <h1 className="font-bebas font-bold text-white text-2xl">Game Format Guide</h1>
+            </div>
+          </div>
           <div className="p-4 text-center">
-            <div className="text-white/50">Error loading glossary. Please try again.</div>
-            <Btn color="blue" onClick={()=>setScreen(tData?'tournament':'login')} className="mt-4">Go Back</Btn>
+            <div className="text-white/50 mb-4">Error loading glossary. Please try again.</div>
+            <Btn color="blue" onClick={()=>setScreen(tData?'tournament':'login')}>Go Back</Btn>
           </div>
         </BG>
       );
@@ -2795,7 +2822,7 @@ function GolfScoringApp() {
                   <span className="block">
                     <span className="whitespace-nowrap">HC {m.pairingHcps[pk]??0}</span>
                     {!fmt.perHole&&<span className="whitespace-nowrap"> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</span>}
-                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Skin +{skinSt[pk]}</span>}
+                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Stroke +{skinSt[pk]}</span>}
                   </span>
                 )}
               </div>
