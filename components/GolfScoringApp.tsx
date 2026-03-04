@@ -2242,24 +2242,17 @@ function GolfScoringApp() {
     }
     const players=tData.players??[];
     
-    // Memoize expensive team pool calculations
-    const t1pool = useMemo(() => 
-      (tData?.teams?.team1??[]).map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[],
-      [tData?.teams?.team1, players]
-    );
-    
-    const t2pool = useMemo(() =>
-      (tData?.teams?.team2??[]).map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[],
-      [tData?.teams?.team2, players]
-    );
+    // Team pool calculations
+    const t1pool = (tData?.teams?.team1??[]).map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[];
+    const t2pool = (tData?.teams?.team2??[]).map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[];
 
-    // Memoize tee options calculation
-    const allTeeOpts = useMemo(() => (tData.courses??[]).flatMap(c=>
+    // Tee options calculation
+    const allTeeOpts = (tData.courses??[]).flatMap(c=>
       (c.tees??[]).map(t=>{
         const totalYards = (t.holes??[]).reduce((s,h)=>s+(h.yards??0),0);
         return {value:`${c.id}::${t.name}`,label:`${c.name} — ${t.name} (${t.slope}/${t.rating} · P${t.par} · ${totalYards.toLocaleString()}y)`};
       })
-    ), [tData.courses]);
+    );
 
     const MatchCard = ({m}:{m:Match}) => {
       const fmt=FORMATS[m.format];
@@ -3016,19 +3009,16 @@ function GolfScoringApp() {
     }
     const players=tData.players??[];
     
-    // Memoize expensive MVP ranking calculation
-    const contribs = useMemo(() => 
-      [...players].map(p=>({
-        ...p,
-        pts: p.stats?.pointsContributed||0,
-        net: p.stats?.netUnderPar||0,
-        skins: p.stats?.skinsWon||0,
-      })).sort((a,b)=>
-        b.pts!==a.pts ? b.pts-a.pts :
-        b.net!==a.net ? b.net-a.net :
-        b.skins-a.skins
-      ),
-      [players]
+    // MVP ranking calculation
+    const contribs = [...players].map(p=>({
+      ...p,
+      pts: p.stats?.pointsContributed||0,
+      net: p.stats?.netUnderPar||0,
+      skins: p.stats?.skinsWon||0,
+    })).sort((a,b)=>
+      b.pts!==a.pts ? b.pts-a.pts :
+      b.net!==a.net ? b.net-a.net :
+      b.skins-a.skins
     );
     
     const played=tData.matchResults?.length||0;
@@ -3151,8 +3141,8 @@ function GolfScoringApp() {
     const matches = tData.matches ?? [];
     const matchResults = tData.matchResults ?? [];
     
-    // Memoize expensive skins calculation for each course
-    const courseSkinsData = useMemo(() => courses.map(course => {
+    // Expensive skins calculation for each course
+    const courseSkinsData = courses.map(course => {
       // Find all matches played on this course
       const courseMatches = matches.filter(m => m.courseId === course.id);
       const completedMatchIds = matchResults.map(r => r.matchId);
@@ -3290,7 +3280,7 @@ function GolfScoringApp() {
         completedMatches: completedCourseMatches.length,
         totalMatches: courseMatches.length,
       };
-    }), [courses, matches, matchResults, allMatchScores, tData.players, skinsPots]);
+    });
     
     return (
       <BG>
