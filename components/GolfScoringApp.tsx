@@ -1036,12 +1036,10 @@ function GolfScoringApp() {
     
     return errorHandler.execute(
       async () => {
-        console.log('Starting transaction for tournament:', tournId);
         
         // Use runTransaction for atomic read-modify-write operations
         const tournRef = ref(db, `tournaments/${tournId}`);
         const result = await runTransaction(tournRef, (current) => {
-          console.log('Transaction callback, current data:', current ? 'exists' : 'null');
           if (!current) {
             console.error('Transaction aborted: tournament does not exist');
             return current; // Abort if tournament doesn't exist
@@ -1071,7 +1069,6 @@ function GolfScoringApp() {
           // Apply the update function to the current database value
           try {
             const updated = updater(current as Tournament);
-            console.log('Transaction update applied successfully');
             return updated;
           } catch (updateErr) {
             console.error('Error in updater function:', updateErr);
@@ -1079,7 +1076,6 @@ function GolfScoringApp() {
           }
         });
         
-        console.log('Transaction result:', result.committed ? 'committed' : 'aborted');
         
         // Update local state with the committed value
         if (result.committed && result.snapshot.exists()) {
@@ -1106,7 +1102,6 @@ function GolfScoringApp() {
           });
           
           setTData(newData);
-          console.log('Local state updated successfully');
           return newData;
         }
         
@@ -1116,11 +1111,9 @@ function GolfScoringApp() {
       'Failed to update tournament. Please try again.'
     ).catch(async (err) => {
       // Additional error recovery: reload from database
-      console.log('Attempting to reload tournament data after error...');
       try {
         const latest = await loadTournament(tournId);
         if (latest) {
-          console.log('Reloaded tournament data after error');
           setTData(latest);
         }
       } catch (reloadErr) {
@@ -1537,8 +1530,7 @@ function GolfScoringApp() {
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='login') {
     return (
-      <div>
-        <BG>
+      <BG>
       <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5 safe-top safe-bottom">
         {/* Hero Header */}
         <div className="text-center mb-8">
@@ -1993,8 +1985,6 @@ function GolfScoringApp() {
         </div>
       </div>
     </BG>
-    <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-    </div>
     );
   }
 
@@ -2004,14 +1994,10 @@ function GolfScoringApp() {
   if (screen==='admin') {
     if (!tData) {
       return (
-        <div>
-          <BG><TopBar title="Admin"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>
-          <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-        </div>
+        <BG><TopBar title="Admin"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>
       );
     }
     return (
-    <div>
     <BG>
       <TopBar/>
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
@@ -2182,8 +2168,6 @@ function GolfScoringApp() {
         </Btn>
       </div>
     </BG>
-    <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-    </div>
     );
   }
 
@@ -2246,7 +2230,6 @@ function GolfScoringApp() {
         </Card>
       </div>
     </BG>
-    <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     );
   }
 
@@ -2541,7 +2524,6 @@ function GolfScoringApp() {
     };
 
     return (
-      <div>
       <BG>
         <TopBar/>
         <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
@@ -2693,8 +2675,6 @@ function GolfScoringApp() {
           })()}
         </div>
       </BG>
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      </div>
     );
   }
 
@@ -2868,7 +2848,6 @@ function GolfScoringApp() {
     };
 
     return (
-      <div>
       <BG>
         {/* Hole Header */}
         <div className="sticky top-0 z-20 border-b border-white/10" style={{background:'rgba(11,22,40,0.97)'}}>
@@ -3025,8 +3004,6 @@ function GolfScoringApp() {
           {role==='player'&&currentHole===m.holes&&<div className="text-center text-xs text-white/30">Only the admin can finalize the match</div>}
         </div>
       </BG>
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      </div>
     );
   }
 
@@ -3058,7 +3035,6 @@ function GolfScoringApp() {
     const remaining=(tData.matches?.length||0)-played;
 
     return (
-      <div>
       <BG>
         <TopBar title="Standings"/>
         <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
@@ -3161,8 +3137,6 @@ function GolfScoringApp() {
           </Card>
         </div>
       </BG>
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      </div>
     );
   }
 
@@ -3319,7 +3293,6 @@ function GolfScoringApp() {
     }), [courses, matches, matchResults, allMatchScores, tData.players, skinsPots]);
     
     return (
-      <div>
       <BG>
         <TopBar title="Skins"/>
         <div className="max-w-2xl mx-auto p-4 space-y-6 pb-8 safe-bottom">
@@ -3467,8 +3440,6 @@ function GolfScoringApp() {
           )}
         </div>
       </BG>
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      </div>
     );
   }
 
