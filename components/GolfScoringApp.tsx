@@ -742,7 +742,7 @@ function GolfScoringApp() {
   const [showMatchBuilder, setShowMatchBuilder] = useState(false);
   const [viewingMatchId, setViewingMatchId]   = useState<string|null>(null);
   const [editingScores, setEditingScores]     = useState(false);
-  const [expandedMatches, setExpandedMatches] = useState<Record<string,boolean>>();
+  const [expandedMatches, setExpandedMatches] = useState<Record<string,boolean>>({});
   const [skinsPots, setSkinsPots] = useState<Record<string,number>>({});
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
   const [matchLoading, setMatchLoading] = useState(false);
@@ -2255,14 +2255,18 @@ function GolfScoringApp() {
     );
 
     const MatchCard = ({m}:{m:Match}) => {
+      if (!m) return null;
       const fmt=FORMATS[m.format];
+      if (!fmt) return null;
       const result=getResult(m.id);
       const isSgl=fmt.ppp===1;
       const totalPts=calcMatchPts(m);
       const isExpanded=expandedMatches[m.id]??false;
       const matchTee=getTeeForMatch(m);
       const matchCourseName=(tData?.courses??[]).find(c=>c.id===(m.courseId??tData.activeCourseId))?.name??'';
-      const usedIds=Object.values(m.pairings??{}).flat().filter(Boolean);
+      const pairings = m.pairings ?? {};
+      const pairingHcps = m.pairingHcps ?? {};
+      const usedIds=Object.values(pairings).flat().filter(Boolean);
 
       const setMatchCourseTee = async (val: string) => {
         const [cid,tid]=val.split('::');
@@ -2562,7 +2566,7 @@ function GolfScoringApp() {
                 <div>{role==='admin'?'No matches yet — add one above':'No matches scheduled yet'}</div>
               </div>
             )}
-            <div className="space-y-3">{(tData.matches??[]).map(m=><MatchCard key={m.id} m={m}/>)}</div>
+            <div className="space-y-3">{(tData.matches??[]).filter(m=>m?.id).map(m=><MatchCard key={m.id} m={m}/>)}</div>
           </Card>
 
           {/* Scorecard Modal */}
