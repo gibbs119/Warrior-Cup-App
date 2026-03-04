@@ -1535,9 +1535,10 @@ function GolfScoringApp() {
   // ══════════════════════════════════════════════════════════════════════════════
   // LOGIN SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
-  if (screen==='login') return (
-    <div>
-      <BG>
+  if (screen==='login') {
+    return (
+      <div>
+        <BG>
       <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5 safe-top safe-bottom">
         {/* Hero Header */}
         <div className="text-center mb-8">
@@ -1994,18 +1995,21 @@ function GolfScoringApp() {
     </BG>
     <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
-  );
+    );
+  }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // ADMIN SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='admin') {
-    if (!tData) return (
-      <div>
-        <BG><TopBar title="Admin"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>
-        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      </div>
-    );
+    if (!tData) {
+      return (
+        <div>
+          <BG><TopBar title="Admin"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>
+          <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+        </div>
+      );
+    }
     return (
     <div>
     <BG>
@@ -2178,14 +2182,17 @@ function GolfScoringApp() {
         </Btn>
       </div>
     </BG>
-  );
+    <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </div>
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // COURSE SEARCH / MANUAL ENTRY
   // ══════════════════════════════════════════════════════════════════════════════
-  if (screen==='courseSearch') return (
-    <BG>
+  if (screen==='courseSearch') {
+    return (
+      <BG>
       <TopBar title="Add a Course" back={()=>setScreen('admin')}/>
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
         <Card className="p-5">
@@ -2240,14 +2247,16 @@ function GolfScoringApp() {
       </div>
     </BG>
     <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-    </div>
-  );
+    );
+  }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // TOURNAMENT SCHEDULE
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='tournament') {
-    if (!tData) return <BG><TopBar title="Tournament"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    if (!tData) {
+      return <BG><TopBar title="Tournament"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    }
     const players=tData.players??[];
     
     // Memoize expensive team pool calculations
@@ -2532,6 +2541,7 @@ function GolfScoringApp() {
     };
 
     return (
+      <div>
       <BG>
         <TopBar/>
         <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
@@ -2683,6 +2693,8 @@ function GolfScoringApp() {
           })()}
         </div>
       </BG>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
     );
   }
 
@@ -2690,14 +2702,18 @@ function GolfScoringApp() {
   // SCORING SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='scoring') {
-    if (!tData) return <BG><TopBar title="Scoring"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    if (!tData) {
+      return <BG><TopBar title="Scoring"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    }
     const m=getMatch(activeMatchId);
-    if (!m) return (
-      <BG><div className="flex items-center justify-center min-h-[100dvh] p-8 text-center">
-        <div><div className="text-white/40 text-lg mb-4">Match not found.</div>
-        <Btn color="gold" onClick={()=>setScreen('tournament')}>Back to Schedule</Btn></div>
-      </div></BG>
-    );
+    if (!m) {
+      return (
+        <BG><div className="flex items-center justify-center min-h-[100dvh] p-8 text-center">
+          <div><div className="text-white/40 text-lg mb-4">Match not found.</div>
+          <Btn color="gold" onClick={()=>setScreen('tournament')}>Back to Schedule</Btn></div>
+        </div></BG>
+      );
+    }
     const matchTee=getTeeForMatch(m);
     const players=tData.players??[];
     const actualHoleNum=currentHole+(m.startHole-1);
@@ -2852,6 +2868,7 @@ function GolfScoringApp() {
     };
 
     return (
+      <div>
       <BG>
         {/* Hole Header */}
         <div className="sticky top-0 z-20 border-b border-white/10" style={{background:'rgba(11,22,40,0.97)'}}>
@@ -3008,6 +3025,8 @@ function GolfScoringApp() {
           {role==='player'&&currentHole===m.holes&&<div className="text-center text-xs text-white/30">Only the admin can finalize the match</div>}
         </div>
       </BG>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
     );
   }
 
@@ -3015,7 +3034,9 @@ function GolfScoringApp() {
   // STANDINGS
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='standings') {
-    if (!tData) return <BG><TopBar title="Standings"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    if (!tData) {
+      return <BG><TopBar title="Standings"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    }
     const players=tData.players??[];
     
     // Memoize expensive MVP ranking calculation
@@ -3037,6 +3058,7 @@ function GolfScoringApp() {
     const remaining=(tData.matches?.length||0)-played;
 
     return (
+      <div>
       <BG>
         <TopBar title="Standings"/>
         <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
@@ -3139,6 +3161,8 @@ function GolfScoringApp() {
           </Card>
         </div>
       </BG>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
     );
   }
 
@@ -3146,7 +3170,9 @@ function GolfScoringApp() {
   // SKINS SCREEN - Per-course skins breakdown with pot calculation
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='skins') {
-    if (!tData) return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    if (!tData) {
+      return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    }
     const courses = tData.courses ?? [];
     const matches = tData.matches ?? [];
     const matchResults = tData.matchResults ?? [];
@@ -3293,6 +3319,7 @@ function GolfScoringApp() {
     }), [courses, matches, matchResults, allMatchScores, tData.players, skinsPots]);
     
     return (
+      <div>
       <BG>
         <TopBar title="Skins"/>
         <div className="max-w-2xl mx-auto p-4 space-y-6 pb-8 safe-bottom">
@@ -3440,6 +3467,8 @@ function GolfScoringApp() {
           )}
         </div>
       </BG>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
     );
   }
 
