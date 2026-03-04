@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Component, memo, useMemo, useCallback } from 'react';
 import {
   Trophy, Plus, Trash2, Save, Award, ChevronLeft, ChevronRight,
   Check, Flag, Lock, Users, LogOut, Shield, ChevronDown, BookOpen,
@@ -39,6 +39,7 @@ const FORMATS: Record<string,{name:string;ppp:number;hcpType:string;holesOpts:nu
   modifiedscramble: { name:'Modified Scramble', ppp:2, hcpType:'avg75', holesOpts:[9,18], desc:'Best net of all 4 pairings wins hole — 0.5pts/hole', pointsPerMatchup:0.5, numMatchups:1, perHole:true },
   bestball:         { name:'Best Ball',          ppp:2, hcpType:'full',  holesOpts:[9,18], desc:'Best individual net score wins',                          pointsPerMatchup:1, numMatchups:2 },
   scramble:         { name:'2-Man Scramble',     ppp:2, hcpType:'avg75', holesOpts:[9,18], desc:'Team picks best shot each time',                          pointsPerMatchup:1, numMatchups:2 },
+  greensomes:       { name:'Greensomes',         ppp:2, hcpType:'6040',  holesOpts:[9,18], desc:'Pick best drive, alternate from there',                  pointsPerMatchup:1, numMatchups:2 },
   alternateshot:    { name:'Alternate Shot',     ppp:2, hcpType:'avg',   holesOpts:[9,18], desc:'Partners alternate shots',                                pointsPerMatchup:1, numMatchups:2 },
   singles:          { name:'Singles',            ppp:1, hcpType:'full',  holesOpts:[9,18], desc:'4 individual 1v1 matches — 4 pts',                       pointsPerMatchup:1, numMatchups:4 },
 };
@@ -219,6 +220,15 @@ const pairingPlayingHcp = (ids: string[], format: string, tee: Tee, players: Pla
     return Math.round(lower * 0.35 + higher * 0.15);
   }
 
+  // Greensomes: 60% lower + 40% higher
+  if (format === 'greensomes') {
+    if (courseHcps.length < 2) return 0;
+    const [lower, higher] = courseHcps[0] <= courseHcps[1] 
+      ? [courseHcps[0], courseHcps[1]] 
+      : [courseHcps[1], courseHcps[0]];
+    return Math.round(lower * 0.6 + higher * 0.4);
+  }
+
   // Alternate Shot: 50% of combined handicaps
   if (format === 'alternateshot') {
     return Math.round(courseHcps.reduce((a,b)=>a+b,0) / 2);
@@ -227,10 +237,117 @@ const pairingPlayingHcp = (ids: string[], format: string, tee: Tee, players: Pla
   // Best Ball: This is a team handicap placeholder - actual player strokes calculated in matchplay
   // For display purposes, show the average 90% handicap
   if (format === 'bestball') {
-    return Math.round(courseHcps.reduce((a,b)=>a+b,0) / courseHcps.length * 0.9);
+    return courseHcps.length > 0 ? Math.round(courseHcps.reduce((a,b)=>a+b,0) / courseHcps.length * 0.9) : 0;
   }
 
   return 0;
+};
+
+// ─── Input Validation ────────────────────────────────────────────────────────
+// Validation utilities for all user inputs to prevent invalid data
+const validation = {
+  playerName: (name: string): { valid: boolean; error?: string } => {
+    if (!name || name.trim().length === 0) {
+      return { valid: false, error: 'Player name cannot be empty' };
+    }
+    
+    const trimmed = name.trim();
+    
+    if (trimmed.length < 1 || trimmed.length > 50) {
+      return { valid: false, error: 'Player name must be 1-50 characters' };
+    }
+    
+    // Allow letters, spaces, hyphens, apostrophes only
+    const validNamePattern = /^[a-zA-Z\s\-']+$/;
+    if (!validNamePattern.test(trimmed)) {
+      return { valid: false, error: 'Player name can only contain letters, spaces, hyphens, and apostrophes' };
+    }
+    
+    return { valid: true };
+  },
+
+  tournamentId: (id: string): { valid: boolean; error?: string } => {
+    if (!id || id.trim().length === 0) {
+      return { valid: false, error: 'Tournament ID cannot be empty' };
+    }
+    
+    const trimmed = id.trim().toUpperCase();
+    
+    if (trimmed.length !== 6) {
+      return { valid: false, error: 'Tournament ID must be exactly 6 characters' };
+    }
+    
+    // Must be uppercase letters and numbers only
+    const validIdPattern = /^[A-Z0-9]{6}$/;
+    if (!validIdPattern.test(trimmed)) {
+      return { valid: false, error: 'Tournament ID must contain only uppercase letters and numbers' };
+    }
+    
+    return { valid: true };
+  },
+
+  passcode: (passcode: string): { valid: boolean; error?: string } => {
+    if (!passcode || passcode.length === 0) {
+      return { valid: false, error: 'Passcode cannot be empty' };
+    }
+    
+    if (passcode.length < 4) {
+      return { valid: false, error: 'Passcode must be at least 4 characters' };
+    }
+    
+    if (passcode.length > 50) {
+      return { valid: false, error: 'Passcode is too long (max 50 characters)' };
+    }
+    
+    return { valid: true };
+  },
+
+  handicapIndex: (handicap: number | string): { valid: boolean; error?: string } => {
+    const num = typeof handicap === 'string' ? parseFloat(handicap) : handicap;
+    
+    if (isNaN(num)) {
+      return { valid: false, error: 'Handicap must be a valid number' };
+    }
+    
+    if (num < -10 || num > 54) {
+      return { valid: false, error: 'Handicap must be between -10 and 54' };
+    }
+    
+    return { valid: true };
+  },
+
+  score: (score: number | string, holePar?: number): { valid: boolean; error?: string } => {
+    const num = typeof score === 'string' ? parseInt(score, 10) : score;
+    
+    if (isNaN(num)) {
+      return { valid: false, error: 'Score must be a valid number' };
+    }
+    
+    if (!Number.isInteger(num)) {
+      return { valid: false, error: 'Score must be a whole number' };
+    }
+    
+    if (num < 1 || num > 15) {
+      return { valid: false, error: 'Score must be between 1 and 15' };
+    }
+    
+    // Optional: warn if score is extremely high compared to par
+    if (holePar && num > holePar + 6) {
+      // Allow it but could add a warning in the future
+    }
+    
+    return { valid: true };
+  },
+
+  // Helper to validate and sanitize player name
+  sanitizePlayerName: (name: string): string => {
+    return name.trim().replace(/\s+/g, ' '); // Remove extra spaces
+  },
+
+  // Helper to validate and sanitize tournament ID
+  sanitizeTournamentId: (id: string): string => {
+    return id.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  }
 };
 
 const matchplayStrokes = (hcp1: number, hcp2: number, rank: number) => {
@@ -245,8 +362,8 @@ const matchplayStrokes = (hcp1: number, hcp2: number, rank: number) => {
 // Strokes are based on individual player handicaps within that specific pairing
 const bestBallStrokes = (m: Match, pairingKey: string, oppPairingKey: string, rank: number, tee: Tee, players: Player[]): Record<string,number> => {
   // Get only the players in THIS pairing matchup
-  const thisPairingIds = (m.pairings[pairingKey] || []).filter(Boolean);
-  const oppPairingIds = (m.pairings[oppPairingKey] || []).filter(Boolean);
+  const thisPairingIds = ((m.pairings?.[pairingKey] ?? [])).filter(Boolean);
+  const oppPairingIds = ((m.pairings?.[oppPairingKey] ?? [])).filter(Boolean);
   const allPairingIds = [...thisPairingIds, ...oppPairingIds];
   
   // Calculate 90% of course handicap for each player in this pairing
@@ -257,7 +374,7 @@ const bestBallStrokes = (m: Match, pairingKey: string, oppPairingKey: string, ra
   });
   
   // Find the lowest 90% handicap within this pairing
-  const lowest = Math.min(...playerHcps.map(p => p.hcp90));
+  const lowest = playerHcps.length > 0 ? Math.min(...playerHcps.map(p => p.hcp90)) : 0;
   
   // Calculate strokes for each player relative to lowest in THIS pairing
   // 90% of 90% = 81% total (USGA Best Ball rules)
@@ -318,7 +435,7 @@ const calcGlobalSkinsForHole = (
     const isSingles = fmt?.ppp === 1;
     
     // Get all pairing keys for this match
-    const allPkKeys = Object.keys(m.pairings||{}).filter(k => (m.pairings[k]?.length ?? 0) > 0);
+    const allPkKeys = Object.keys(m.pairings??{}).filter(k => (m.pairings[k]?.length ?? 0) > 0);
     
     for (const pk of allPkKeys) {
       const ids = m.pairings[pk] ?? [];
@@ -330,8 +447,8 @@ const calcGlobalSkinsForHole = (
         // Singles: individual score
         const pid = ids[0];
         raw = scores[pid]?.[hole - 1] ?? null;
-      } else if (fmt?.hcpType === 'avg75' || fmt?.hcpType === 'avg') {
-        // Scramble/Modified Scramble/Alternate Shot: team score (single score for the pairing)
+      } else if (fmt?.hcpType === 'avg75' || fmt?.hcpType === 'avg' || fmt?.hcpType === '6040') {
+        // Scramble/Modified Scramble/Alternate Shot/Greensomes: team score (single score for the pairing)
         const pid = ids[0];
         raw = scores[pid]?.[hole - 1] ?? null;
       } else {
@@ -372,12 +489,66 @@ const BlockW = ({ size = 64, className = '', showGolf = false }: { size?: number
   </div>
 );
 
+// ─── Loading Spinner ──────────────────────────────────────────────────────────
+const Spinner = memo(({ size = 20, color = 'gold' }: { size?: number; color?: 'gold' | 'blue' | 'white' }) => {
+  const colors: Record<string, string> = {
+    gold: '#C9A227',
+    blue: '#006BB6',
+    white: '#FFFFFF'
+  };
+  
+  return (
+    <div 
+      className="inline-block animate-spin" 
+      style={{ width: size, height: size }}
+    >
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle 
+          cx="12" 
+          cy="12" 
+          r="10" 
+          stroke={colors[color]} 
+          strokeWidth="3" 
+          strokeLinecap="round"
+          strokeDasharray="60"
+          strokeDashoffset="15"
+          opacity="0.25"
+        />
+        <circle 
+          cx="12" 
+          cy="12" 
+          r="10" 
+          stroke={colors[color]} 
+          strokeWidth="3" 
+          strokeLinecap="round"
+          strokeDasharray="60"
+          strokeDashoffset="60"
+          opacity="1"
+          style={{
+            transformOrigin: 'center',
+            animation: 'spin-dash 1.5s ease-in-out infinite'
+          }}
+        />
+      </svg>
+      <style>{`
+        @keyframes spin-dash {
+          0% { stroke-dashoffset: 60; }
+          50% { stroke-dashoffset: 15; }
+          100% { stroke-dashoffset: 60; }
+        }
+      `}</style>
+    </div>
+  );
+});
+Spinner.displayName = 'Spinner';
+
 // ─── Script W'boro Logo ───────────────────────────────────────────────────────
-const ScriptWboro = ({ className = '' }: { className?: string }) => (
+const ScriptWboro = memo(({ className = '' }: { className?: string }) => (
   <div className={`font-script italic font-bold tracking-tight ${className}`} style={{fontFamily:"'Brush Script MT','Lucida Handwriting',cursive"}}>
     W'boro
   </div>
-);
+));
+ScriptWboro.displayName = 'ScriptWboro';
 
 // ─── Theme: Whitesboro Warriors — Navy / Royal Blue / Gold ───────────────────
 // Navy: #0A1628 | Royal Blue: #006BB6 | Gold: #C9A227 | White: #F0F4FF
@@ -400,7 +571,7 @@ input, select, textarea { font-size: 16px !important; }
 `;
 
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
-const BG = ({children}: {children: React.ReactNode}) => (
+const BG = memo(({children}: {children: React.ReactNode}) => (
   <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
     <style>{FONTS}</style>
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
@@ -413,16 +584,18 @@ const BG = ({children}: {children: React.ReactNode}) => (
     </div>
     <div className="relative z-10">{children}</div>
   </div>
-);
+));
+BG.displayName = 'BG';
 
-const Card = ({children, className='', blue=false}: {children: React.ReactNode; className?: string; blue?: boolean}) => (
+const Card = memo(({children, className='', blue=false}: {children: React.ReactNode; className?: string; blue?: boolean}) => (
   <div className={`rounded-2xl shadow-xl ${blue ? 'card-blue' : 'card-dark'} ${className}`}>
     {children}
   </div>
-);
+));
+Card.displayName = 'Card';
 
-const Btn = ({onClick, children, color='gold', className='', disabled=false, sm=false}: {
-  onClick?: ()=>void; children: React.ReactNode; color?: string; className?: string; disabled?: boolean; sm?: boolean;
+const Btn = memo(({onClick, children, color='gold', className='', disabled=false, sm=false, loading=false}: {
+  onClick?: ()=>void; children: React.ReactNode; color?: string; className?: string; disabled?: boolean; sm?: boolean; loading?: boolean;
 }) => {
   const C: Record<string,string> = {
     gold:   'text-gray-900 font-black shadow-lg hover:opacity-90 active:scale-95',
@@ -435,15 +608,24 @@ const Btn = ({onClick, children, color='gold', className='', disabled=false, sm=
     teal:   'bg-teal-700 hover:bg-teal-600 text-white border border-teal-500/40 active:scale-95',
   };
   const goldStyle = color === 'gold' ? {background:'linear-gradient(135deg,#B8860B,#C9A227,#E5C04A,#C9A227)',boxShadow:'0 4px 16px rgba(201,162,39,0.35)'} : {};
+  
+  const spinnerColor = color === 'gold' ? 'white' : color === 'blue' ? 'white' : 'gold';
+  
   return (
-    <button onClick={onClick} disabled={disabled} style={goldStyle}
-      className={`${sm?'px-3 py-2 text-sm min-h-[36px]':'px-5 py-3 min-h-[44px]'} rounded-xl font-semibold transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed ${C[color]??C.ghost} ${className}`}>
-      {children}
+    <button onClick={onClick} disabled={disabled || loading} style={goldStyle}
+      className={`${sm?'px-3 py-2 text-sm min-h-[36px]':'px-5 py-3 min-h-[44px]'} rounded-xl font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${C[color]??C.ghost} ${className}`}>
+      {loading ? (
+        <span className="flex items-center justify-center gap-2">
+          <Spinner size={sm ? 14 : 16} color={spinnerColor} />
+          {typeof children === 'string' ? children.replace(/^(Save|Complete|Delete|Create|Add|Update)/, '$1ing').replace(/Enter/, 'Loading') : children}
+        </span>
+      ) : children}
     </button>
   );
-};
+});
+Btn.displayName = 'Btn';
 
-const Inp = ({label, value, onChange, type='text', placeholder='', className='', onKeyDown}: {
+const Inp = memo(({label, value, onChange, type='text', placeholder='', className='', onKeyDown}: {
   label?: string; value: string|number; onChange: (v:string)=>void;
   type?: string; placeholder?: string; className?: string; onKeyDown?: (e:React.KeyboardEvent)=>void;
 }) => (
@@ -453,9 +635,10 @@ const Inp = ({label, value, onChange, type='text', placeholder='', className='',
       className="w-full px-4 py-3 rounded-xl outline-none text-white placeholder-white/25 transition-all border border-white/10 focus:border-[#006BB6] focus:ring-2 focus:ring-[#006BB6]/30"
       style={{background:'rgba(255,255,255,0.06)'}}/>
   </div>
-);
+));
+Inp.displayName = 'Inp';
 
-const Sel = ({label, value, onChange, options, className=''}: {
+const Sel = memo(({label, value, onChange, options, className=''}: {
   label?: string; value: string|number; onChange: (v:string)=>void;
   options: {value: string|number; label: string}[]; className?: string;
 }) => (
@@ -467,9 +650,10 @@ const Sel = ({label, value, onChange, options, className=''}: {
       {options.map(o=><option key={String(o.value)} value={o.value}>{o.label}</option>)}
     </select>
   </div>
-);
+));
+Sel.displayName = 'Sel';
 
-const Badge = ({children, color='gray'}: {children: React.ReactNode; color?: string}) => {
+const Badge = memo(({children, color='gray'}: {children: React.ReactNode; color?: string}) => {
   const C: Record<string,string> = {
     green:  'bg-emerald-900/60 text-emerald-300 border-emerald-700/50',
     blue:   'bg-blue-900/60 text-blue-300 border-blue-600/50',
@@ -480,12 +664,70 @@ const Badge = ({children, color='gray'}: {children: React.ReactNode; color?: str
     gold:   'bg-yellow-900/50 text-yellow-300 border-yellow-600/50',
   };
   return <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold border ${C[color]??C.gray}`}>{children}</span>;
-};
+});
+Badge.displayName = 'Badge';
+
+// ─── Toast Notifications ──────────────────────────────────────────────────────
+const ToastContainer = memo(({ toasts, onDismiss }: {
+  toasts: Array<{id: string; message: string; type: 'success' | 'error' | 'info'}>;
+  onDismiss: (id: string) => void;
+}) => {
+  if (toasts.length === 0) return null;
+  
+  return (
+    <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none" style={{maxWidth: '90vw', width: '400px'}}>
+      {toasts.map(toast => {
+        const colors = {
+          success: { bg: 'bg-emerald-900/95', border: 'border-emerald-500/60', text: 'text-emerald-100', icon: '✓' },
+          error: { bg: 'bg-red-900/95', border: 'border-red-500/60', text: 'text-red-100', icon: '✕' },
+          info: { bg: 'bg-blue-900/95', border: 'border-blue-500/60', text: 'text-blue-100', icon: 'ℹ' }
+        };
+        const c = colors[toast.type];
+        
+        return (
+          <div
+            key={toast.id}
+            className={`${c.bg} ${c.text} px-4 py-3 rounded-xl border-2 ${c.border} shadow-2xl pointer-events-auto backdrop-blur-sm animate-slide-in`}
+            style={{
+              animation: 'slideIn 0.3s ease-out',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 font-bold text-lg">{c.icon}</div>
+              <div className="flex-1 text-sm font-medium pr-8">{toast.message}</div>
+              <button
+                onClick={() => onDismiss(toast.id)}
+                className="flex-shrink-0 text-white/60 hover:text-white/90 transition-colors"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      <style>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+    </div>
+  );
+});
+ToastContainer.displayName = 'ToastContainer';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function GolfScoringApp() {
+function GolfScoringApp() {
   const [screen, setScreen]               = useState<string>('login');
   const [role, setRole]                   = useState<string|null>(null);
   const [tournId, setTournId]             = useState('');
@@ -500,12 +742,72 @@ export default function GolfScoringApp() {
   const [showMatchBuilder, setShowMatchBuilder] = useState(false);
   const [viewingMatchId, setViewingMatchId]   = useState<string|null>(null);
   const [editingScores, setEditingScores]     = useState(false);
-  const [expandedMatches, setExpandedMatches] = useState<Record<string,boolean>>({});
+  const [expandedMatches, setExpandedMatches] = useState<Record<string,boolean>>();
   const [skinsPots, setSkinsPots] = useState<Record<string,number>>({});
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
-  const toggleExpanded = (mid: string) => setExpandedMatches(prev=>({...prev,[mid]:!prev[mid]}));
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [scoringLoading, setScoringLoading] = useState(false);
+  const [enteringScores, setEnteringScores] = useState(false);
+  
+  // ── Toast Notifications ──────────────────────────────────────────────────────
+  const [toasts, setToasts] = useState<Array<{id: string; message: string; type: 'success' | 'error' | 'info'}>>([]);
+  
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000); // Auto-dismiss after 4 seconds
+  }, []);
+  
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+  
+  const toggleExpanded = useCallback((mid: string) => 
+    setExpandedMatches(prev=>({...prev,[mid]:!prev[mid]})),
+    []
+  );
   const [manualCourse, setManualCourse] = useState<Course>({id:'',name:'',location:'',tees:[blankTee()]});
   const unsubRef = useRef<(()=>void)|null>(null);
+
+  // ── Global Error Handler ─────────────────────────────────────────────────────
+  // Catch all unhandled promise rejections to prevent silent failures
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      // Log detailed error information to console
+      console.error('═══════════════════════════════════════════════════════════');
+      console.error('⚠️  UNHANDLED PROMISE REJECTION');
+      console.error('═══════════════════════════════════════════════════════════');
+      console.error('Reason:', event.reason);
+      console.error('Promise:', event.promise);
+      
+      // If the reason is an Error object, log additional details
+      if (event.reason instanceof Error) {
+        console.error('Error Message:', event.reason.message);
+        console.error('Error Stack:', event.reason.stack);
+      }
+      
+      console.error('Timestamp:', new Date().toISOString());
+      console.error('Current Screen:', screen);
+      console.error('Tournament ID:', tournId || 'none');
+      console.error('═══════════════════════════════════════════════════════════');
+      
+      // Show user-friendly toast
+      showToast('An unexpected error occurred. Please try refreshing the page.', 'error');
+      
+      // Prevent default browser behavior (console error)
+      event.preventDefault();
+    };
+
+    // Add event listener
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    // Cleanup on unmount
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, [screen, tournId]); // Include dependencies for logging context
 
   // ── Firebase normalization ───────────────────────────────────────────────────
   const normalizeTournament = (data: Tournament): Tournament => ({
@@ -581,8 +883,8 @@ export default function GolfScoringApp() {
         m.pairings = m.pairings || {};
         m.pairingHcps = m.pairingHcps || {};
         // Ensure each pairing slot is an array
-        Object.keys(m.pairings).forEach(k => {
-          if (!Array.isArray(m.pairings[k])) {
+        Object.keys(m.pairings??{}).forEach(k => {
+          if (!Array.isArray(m.pairings?.[k])) {
             m.pairings[k] = [];
           }
         });
@@ -615,31 +917,55 @@ export default function GolfScoringApp() {
 
   // ── Create / Join ────────────────────────────────────────────────────────────
   const createTournament = async () => {
-    const id=genCode(6), pc=genCode(4), adminPc=genCode(4);
-    const players: Player[] = [
-      {id:'p1',name:'Ryan', handicapIndex:10,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-      {id:'p2',name:'Doby', handicapIndex:11,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-      {id:'p3',name:'Stevie',handicapIndex:22,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-      {id:'p4',name:'Erm',  handicapIndex:24,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-      {id:'p5',name:'Gibbs',handicapIndex:17,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-      {id:'p6',name:'Dief', handicapIndex:18,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-      {id:'p7',name:'Kev',  handicapIndex:21,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-      {id:'p8',name:'Geoff',handicapIndex:28,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-    ];
-    const data: Tournament = {
-      id, name:'Warrior Cup '+new Date().getFullYear(), passcode:pc, adminPasscode:adminPc,
-      courses:PRESET_COURSES, activeCourseId:'hawks_landing', activeTeeId:'Black',
-      teamNames:{team1:'Team 1',team2:'Team 2'},
-      players,
-      teams:{ team2:['p1','p2','p3','p4'], team1:['p5','p6','p7','p8'] },
-      matches:[], matchResults:[], createdAt:new Date().toISOString(),
-    };
-    await saveTournament(data, id);
-    setTournId(id); setTData(data); setPasscode(adminPc); setRole('admin'); setScreen('admin');
+    setLoading(true);
+    try {
+      const id=genCode(6), pc=genCode(4), adminPc=genCode(4);
+      const players: Player[] = [
+        {id:'p1',name:'Ryan', handicapIndex:10,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p2',name:'Doby', handicapIndex:11,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p3',name:'Stevie',handicapIndex:22,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p4',name:'Erm',  handicapIndex:24,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p5',name:'Gibbs',handicapIndex:17,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p6',name:'Dief', handicapIndex:18,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p7',name:'Kev',  handicapIndex:21,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p8',name:'Geoff',handicapIndex:28,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+      ];
+      const data: Tournament = {
+        id, name:'Warrior Cup '+new Date().getFullYear(), passcode:pc, adminPasscode:adminPc,
+        courses:PRESET_COURSES, activeCourseId:'hawks_landing', activeTeeId:'Black',
+        teamNames:{team1:'Team 1',team2:'Team 2'},
+        players,
+        teams:{ team2:['p1','p2','p3','p4'], team1:['p5','p6','p7','p8'] },
+        matches:[], matchResults:[], createdAt:new Date().toISOString(),
+      };
+      await saveTournament(data, id);
+      setTournId(id); setTData(data); setPasscode(adminPc); setRole('admin'); setScreen('admin');
+    } catch (err) {
+      console.error('Failed to create tournament:', err);
+      showToast('Error creating tournament. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const joinTournament = async (asAdmin: boolean) => {
-    setLoginErr(''); setLoading(true);
+    setLoginErr(''); 
+    
+    // Validate tournament ID
+    const tournIdValidation = validation.tournamentId(tournId);
+    if (!tournIdValidation.valid) {
+      setLoginErr(tournIdValidation.error || 'Invalid tournament ID');
+      return;
+    }
+    
+    // Validate passcode
+    const passcodeValidation = validation.passcode(passcode);
+    if (!passcodeValidation.valid) {
+      setLoginErr(passcodeValidation.error || 'Invalid passcode');
+      return;
+    }
+    
+    setLoading(true);
     const data = await loadTournament(tournId.toUpperCase().trim());
     if (!data) { setLoginErr('Tournament not found.'); setLoading(false); return; }
     if (asAdmin && passcode!==data.adminPasscode) { setLoginErr('Wrong admin passcode.'); setLoading(false); return; }
@@ -649,97 +975,148 @@ export default function GolfScoringApp() {
     setScreen(asAdmin?'admin':'tournament'); setLoading(false);
   };
 
+  // ── Error Handler Hook ───────────────────────────────────────────────────────
+  // Custom hook for consistent async error handling across the app
+  const useErrorHandler = () => {
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<Error | null>(null);
+
+    const execute = async <T,>(
+      operation: () => Promise<T>,
+      errorMessage?: string
+    ): Promise<T | null> => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await operation();
+        return result;
+      } catch (err) {
+        const error = err as Error;
+        setError(error);
+        
+        // Log error details
+        console.error('═══════════════════════════════════════════════════════════');
+        console.error('⚠️  ERROR HANDLER CAUGHT AN ERROR');
+        console.error('═══════════════════════════════════════════════════════════');
+        console.error('Error:', error);
+        console.error('Message:', error.message);
+        console.error('Stack:', error.stack);
+        console.error('Custom Message:', errorMessage || 'No custom message');
+        console.error('Timestamp:', new Date().toISOString());
+        console.error('═══════════════════════════════════════════════════════════');
+        
+        // Show user-friendly toast
+        const userMessage = errorMessage || 'An error occurred. Please try again.';
+        showToast(userMessage, 'error');
+        
+        throw error; // Re-throw so caller can handle if needed
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const clearError = () => setError(null);
+
+    return { loading, error, execute, clearError };
+  };
+
+  // Create error handler instance
+  const errorHandler = useErrorHandler();
+
   // ── Tournament mutation ──────────────────────────────────────────────────────
   // ─── Tournament Updates (Transaction-Safe) ────────────────────────────────────
   // FIXED: Use Firebase transactions to prevent race conditions when multiple admins edit simultaneously
+  // FIXED: Use error handler for consistent error handling and loading states
   const updateTournament = async (updater: (d:Tournament)=>Tournament) => {
     if (!tData) {
       console.error('updateTournament: No tournament data available');
       return;
     }
     
-    try {
-      console.log('Starting transaction for tournament:', tournId);
-      
-      // Use runTransaction for atomic read-modify-write operations
-      const tournRef = ref(db, `tournaments/${tournId}`);
-      const result = await runTransaction(tournRef, (current) => {
-        console.log('Transaction callback, current data:', current ? 'exists' : 'null');
-        if (!current) {
-          console.error('Transaction aborted: tournament does not exist');
-          return current; // Abort if tournament doesn't exist
-        }
+    return errorHandler.execute(
+      async () => {
+        console.log('Starting transaction for tournament:', tournId);
         
-        // FIX: Normalize arrays that Firebase may have converted to null
-        current.matches = current.matches || [];
-        current.matchResults = current.matchResults || [];
-        current.players = current.players || [];
-        current.courses = current.courses || [];
-        current.teams = current.teams || { team1: [], team2: [] };
-        current.teams.team1 = current.teams.team1 || [];
-        current.teams.team2 = current.teams.team2 || [];
-        
-        // FIX: Normalize each match's pairings and pairingHcps
-        current.matches.forEach((m: any) => {
-          m.pairings = m.pairings || {};
-          m.pairingHcps = m.pairingHcps || {};
-          // Ensure each pairing slot is an array
-          Object.keys(m.pairings).forEach((k: string) => {
-            if (!Array.isArray(m.pairings[k])) {
-              m.pairings[k] = [];
-            }
+        // Use runTransaction for atomic read-modify-write operations
+        const tournRef = ref(db, `tournaments/${tournId}`);
+        const result = await runTransaction(tournRef, (current) => {
+          console.log('Transaction callback, current data:', current ? 'exists' : 'null');
+          if (!current) {
+            console.error('Transaction aborted: tournament does not exist');
+            return current; // Abort if tournament doesn't exist
+          }
+          
+          // FIX: Normalize arrays that Firebase may have converted to null
+          current.matches = current.matches || [];
+          current.matchResults = current.matchResults || [];
+          current.players = current.players || [];
+          current.courses = current.courses || [];
+          current.teams = current.teams || { team1: [], team2: [] };
+          current.teams.team1 = current.teams.team1 || [];
+          current.teams.team2 = current.teams.team2 || [];
+          
+          // FIX: Normalize each match's pairings and pairingHcps
+          current.matches.forEach((m: any) => {
+            m.pairings = m.pairings || {};
+            m.pairingHcps = m.pairingHcps || {};
+            // Ensure each pairing slot is an array
+            Object.keys(m.pairings??{}).forEach((k: string) => {
+              if (!Array.isArray(m.pairings?.[k])) {
+                m.pairings[k] = [];
+              }
+            });
           });
+          
+          // Apply the update function to the current database value
+          try {
+            const updated = updater(current as Tournament);
+            console.log('Transaction update applied successfully');
+            return updated;
+          } catch (updateErr) {
+            console.error('Error in updater function:', updateErr);
+            throw updateErr;
+          }
         });
         
-        // Apply the update function to the current database value
-        try {
-          const updated = updater(current as Tournament);
-          console.log('Transaction update applied successfully');
-          return updated;
-        } catch (updateErr) {
-          console.error('Error in updater function:', updateErr);
-          throw updateErr;
-        }
-      });
-      
-      console.log('Transaction result:', result.committed ? 'committed' : 'aborted');
-      
-      // Update local state with the committed value
-      if (result.committed && result.snapshot.exists()) {
-        const newData = result.snapshot.val() as Tournament;
+        console.log('Transaction result:', result.committed ? 'committed' : 'aborted');
         
-        // Normalize the snapshot data too
-        newData.matches = newData.matches || [];
-        newData.matchResults = newData.matchResults || [];
-        newData.players = newData.players || [];
-        newData.courses = newData.courses || [];
-        newData.teams = newData.teams || { team1: [], team2: [] };
-        newData.teams.team1 = newData.teams.team1 || [];
-        newData.teams.team2 = newData.teams.team2 || [];
-        
-        // Normalize each match's pairings
-        newData.matches.forEach((m: any) => {
-          m.pairings = m.pairings || {};
-          m.pairingHcps = m.pairingHcps || {};
-          Object.keys(m.pairings).forEach((k: string) => {
-            if (!Array.isArray(m.pairings[k])) {
-              m.pairings[k] = [];
-            }
+        // Update local state with the committed value
+        if (result.committed && result.snapshot.exists()) {
+          const newData = result.snapshot.val() as Tournament;
+          
+          // Normalize the snapshot data too
+          newData.matches = newData.matches || [];
+          newData.matchResults = newData.matchResults || [];
+          newData.players = newData.players || [];
+          newData.courses = newData.courses || [];
+          newData.teams = newData.teams || { team1: [], team2: [] };
+          newData.teams.team1 = newData.teams.team1 || [];
+          newData.teams.team2 = newData.teams.team2 || [];
+          
+          // Normalize each match's pairings
+          newData.matches.forEach((m: any) => {
+            m.pairings = m.pairings || {};
+            m.pairingHcps = m.pairingHcps || {};
+            Object.keys(m.pairings??{}).forEach((k: string) => {
+              if (!Array.isArray(m.pairings?.[k])) {
+                m.pairings[k] = [];
+              }
+            });
           });
-        });
+          
+          setTData(newData);
+          console.log('Local state updated successfully');
+          return newData;
+        }
         
-        setTData(newData);
-        console.log('Local state updated successfully');
-        return newData;
-      }
-      
-      console.warn('Transaction not committed or snapshot does not exist');
-      return tData;
-    } catch (err) {
-      console.error('Transaction failed with error:', err);
-      console.error('Error details:', JSON.stringify(err, null, 2));
-      
-      // Reload from database to get latest state
+        console.warn('Transaction not committed or snapshot does not exist');
+        return tData;
+      },
+      'Failed to update tournament. Please try again.'
+    ).catch(async (err) => {
+      // Additional error recovery: reload from database
+      console.log('Attempting to reload tournament data after error...');
       try {
         const latest = await loadTournament(tournId);
         if (latest) {
@@ -750,8 +1127,9 @@ export default function GolfScoringApp() {
         console.error('Failed to reload tournament:', reloadErr);
       }
       
+      // Re-throw to maintain error propagation
       throw err;
-    }
+    });
   };
 
   // ── Tee helpers ──────────────────────────────────────────────────────────────
@@ -773,6 +1151,15 @@ export default function GolfScoringApp() {
 
   // ── Scoring helpers ──────────────────────────────────────────────────────────
   const setScore = (pid: string, hole: number, val: number|null) => {
+    // Validate score if not null
+    if (val !== null) {
+      const scoreValidation = validation.score(val);
+      if (!scoreValidation.valid) {
+        showToast(scoreValidation.error || 'Invalid score', 'error');
+        return;
+      }
+    }
+    
     setLocalScores(prev=>{
       const arr = prev[pid] ? [...prev[pid]] : Array(getMatch(activeMatchId)?.holes??9).fill(null);
       arr[hole-1]=val; return {...prev,[pid]:arr};
@@ -781,7 +1168,7 @@ export default function GolfScoringApp() {
   const saveScores = async () => { if (activeMatchId) await saveMatchScores(activeMatchId, localScores); };
 
   const pairRawScore = (m: Match, pk: string, hole: number, scores: Record<string,(number|null)[]>) => {
-    const ids = m.pairings[pk];
+    const ids = m.pairings?.[pk] ?? [];
     if (!ids?.length) return null;
     const raw = ids.map(id=>scores[id]?.[hole-1]).filter((v): v is number => v!=null);
     if (!raw.length) return null;
@@ -859,7 +1246,7 @@ export default function GolfScoringApp() {
       // Skins for Best Ball - use PAIRING handicaps (team level), not individual player strokes
       // Skins compete across all pairings, so use the team handicap differences
       const skinStrokesPerPairing = skinsStrokes(m.pairingHcps, rank);
-      const allPkKeys = Object.keys(m.pairings||{});
+      const allPkKeys = Object.keys(m.pairings??{});
       const skinNets = allPkKeys.map(pk=>{
         const ids = m.pairings[pk] ?? [];
         // Get best raw score from this pairing
@@ -889,7 +1276,7 @@ export default function GolfScoringApp() {
       const netA=rawA-t1, netB=rawB-t2;
       return {a,b,netA,netB,winner:netA<netB?'t1p':netB<netA?'t2p':'tie'};
     });
-    const allPkKeys = Object.keys(m.pairings||{});
+    const allPkKeys = Object.keys(m.pairings??{});
     const skinNets = allPkKeys.map(pk=>{
       const raw=pairRawScore(m,pk,hole,scores); if(raw==null) return null;
       return {pk,ids:m.pairings[pk]??[],net:raw-(skinSt[pk]||0)};
@@ -909,7 +1296,7 @@ export default function GolfScoringApp() {
   ) => {
     if(!m||!tee) return {t1Holes:0,t2Holes:0,label:'AS',leader:null as string|null,playerSkins:{} as Record<string,number>};
     let t1=0,t2=0; const playerSkins: Record<string,number>={};
-    Object.values(m.pairings||{}).flat().forEach(id=>{playerSkins[id]=0;});
+    Object.values(m.pairings??{}).flat().forEach(id=>{playerSkins[id]=0;});
     
     // Determine if we should use global skins (across all matches) or per-match skins
     const useGlobalSkins = allMatches && allMatches.length > 0 && allScores && getTeeFunc;
@@ -923,11 +1310,11 @@ export default function GolfScoringApp() {
         const actualHole = m.startHole + h - 1;
         const globalWinner = calcGlobalSkinsForHole(actualHole, allMatches, allScores, getTeeFunc);
         if (globalWinner && globalWinner.matchId === m.id) {
-          const v = 1 / globalWinner.playerIds.length;
+          const v = globalWinner.playerIds.length > 0 ? 1 / globalWinner.playerIds.length : 0;
           globalWinner.playerIds.forEach(id => { playerSkins[id] = (playerSkins[id] || 0) + v; });
         }
       } else if(res.skinWinner) {
-        const v=1/res.skinWinner.ids.length;
+        const v = res.skinWinner.ids.length > 0 ? 1 / res.skinWinner.ids.length : 0;
         res.skinWinner.ids.forEach(id=>{playerSkins[id]=(playerSkins[id]||0)+v;});
       }
     }
@@ -991,7 +1378,7 @@ export default function GolfScoringApp() {
       await saveMatchScores(activeMatchId!,localScores);
     } catch (err) {
       console.error('Failed to save match scores:', err);
-      alert('Error saving scores. Please try again.');
+      showToast('Error saving scores. Please try again.', 'error');
       return;
     }
 
@@ -1018,7 +1405,7 @@ export default function GolfScoringApp() {
         const bestNet = Math.min(...pairNets.map(x=>x.net));
         const bestPairs = pairNets.filter(x=>x.net===bestNet);
         bestPairs.forEach(pair => {
-          const share = 0.5 / bestPairs.length / pair.ids.length;
+          const share = (bestPairs.length > 0 && pair.ids.length > 0) ? 0.5 / bestPairs.length / pair.ids.length : 0;
           pair.ids.filter(Boolean).forEach(id => { playerPointsContrib[id]=(playerPointsContrib[id]||0)+share; });
         });
       }
@@ -1049,7 +1436,7 @@ export default function GolfScoringApp() {
       const hd = tee?.holes.find(x=>x.h===actualHole);
       if (!hd) continue;
       const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
-      for (const pk of Object.keys(m.pairings||{})) {
+      for (const pk of Object.keys(m.pairings??{})) {
         const ids = (m.pairings[pk]??[]).filter(Boolean);
         if (!ids.length) continue;
         const raw = pairRawScore(m, pk, h, localScores);
@@ -1081,15 +1468,17 @@ export default function GolfScoringApp() {
           };
         }),
       }));
+      showToast('Match completed successfully!', 'success');
       setActiveMatchId(null);setLocalScores({});setScreen('tournament');
     } catch (err) {
       console.error('Failed to finalize match:', err);
-      alert('Error finalizing match. Your scores are saved, but please try completing the match again.');
+      showToast('Error finalizing match. Your scores are saved, but please try completing the match again.', 'error');
     }
   };
 
   const addCourse = async (course: Course) => {
     await updateTournament(d=>({...d,courses:[...(d.courses||[]).filter(c=>c.id!==course.id),course]}));
+    showToast('Course added successfully', 'success');
     setManualCourse({id:'',name:'',location:'',tees:[blankTee()]});
     setScreen('admin');
   };
@@ -1147,7 +1536,8 @@ export default function GolfScoringApp() {
   // LOGIN SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='login') return (
-    <BG>
+    <>
+      <BG>
       <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5 safe-top safe-bottom">
         {/* Hero Header */}
         <div className="text-center mb-8">
@@ -1189,10 +1579,10 @@ export default function GolfScoringApp() {
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
-              <Btn color="blue" onClick={()=>joinTournament(false)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
+              <Btn color="blue" onClick={()=>joinTournament(false)} disabled={loading||!tournId||!passcode} loading={loading} className="w-full flex items-center justify-center gap-2">
                 <Users className="w-4 h-4"/><span>Player</span>
               </Btn>
-              <Btn color="ghost" onClick={()=>joinTournament(true)} disabled={loading||!tournId||!passcode} className="w-full flex items-center justify-center gap-2">
+              <Btn color="ghost" onClick={()=>joinTournament(true)} disabled={loading||!tournId||!passcode} loading={loading} className="w-full flex items-center justify-center gap-2">
                 <Lock className="w-4 h-4"/><span>Admin</span>
               </Btn>
             </div>
@@ -1206,7 +1596,7 @@ export default function GolfScoringApp() {
           </div>
 
           {/* Create New */}
-          <Btn color="gold" onClick={createTournament} disabled={loading} className="w-full flex items-center justify-center gap-2 py-4">
+          <Btn color="gold" onClick={createTournament} disabled={loading} loading={loading} className="w-full flex items-center justify-center gap-2 py-4">
             <Trophy className="w-5 h-5"/>
             <span className="font-bebas text-xl tracking-wider">Create Warrior Cup</span>
           </Btn>
@@ -1359,6 +1749,37 @@ export default function GolfScoringApp() {
           'Format difficulty makes skins very competitive'
         ],
         example: 'Par 4: Player A drives (210 yards). Player B hits approach (150 yards to green). Player A putts (3 feet past). Player B makes par putt. Team scores 4.'
+      },
+      greensomes: {
+        name: 'Greensomes',
+        overview: 'Both players tee off, select best drive, then the player whose drive was NOT selected plays the second shot. Partners alternate from there.',
+        howToPlay: [
+          'Both players tee off',
+          'Team selects the best drive',
+          'The player whose ball was NOT selected hits the second shot',
+          'Partners alternate shots from there until hole is complete',
+          'More strategic than scramble - need to choose drives carefully'
+        ],
+        scoring: [
+          '2 pairings per match',
+          'Each team records ONE score (shared ball)',
+          'Best NET score between pairings wins the hole',
+          '1 point per hole won'
+        ],
+        handicaps: [
+          'Team handicap = 60% of lower handicap + 40% of higher handicap',
+          'Example: CH 12 + CH 20 = (12 × 0.6) + (20 × 0.4) = 7.2 + 8 = 15 team HC',
+          'More generous than scramble, less than alternate shot',
+          'Strokes applied based on difference vs opponent',
+          'Rewards selecting right drives'
+        ],
+        skins: [
+          'All 4 teams compete with team scores',
+          'Uses team handicap differences',
+          'Best NET score across all teams wins skin',
+          'Strategic tee shot selection affects skins'
+        ],
+        example: 'Par 4: Both players drive. Team picks Player A\'s drive (250 yards). Player B hits approach (150 to green). Player A putts (15 feet). Player B makes par putt. Team scores 4.'
       },
       singles: {
         name: 'Singles (1v1 Match Play)',
@@ -1571,14 +1992,22 @@ export default function GolfScoringApp() {
         </div>
       </div>
     </BG>
+    <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </>
   );
 
   // ══════════════════════════════════════════════════════════════════════════════
   // ADMIN SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='admin') {
-    if (!tData) return <BG><TopBar title="Admin"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    if (!tData) return (
+      <>
+        <BG><TopBar title="Admin"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
     return (
+    <>
     <BG>
       <TopBar/>
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
@@ -1615,10 +2044,10 @@ export default function GolfScoringApp() {
           {(['team1','team2'] as const).map(key=>(
             <div key={key} className={`rounded-2xl p-4 ${key==='team1'?'card-blue':'card-red'}`}>
               <div className="text-xs text-white/40 mb-2 uppercase tracking-wider">{key==='team1'?'Team 1':'Team 2'}</div>
-              <input value={tData.teamNames[key]} onChange={e=>updateTournament(d=>({...d,teamNames:{...d.teamNames,[key]:e.target.value}}))}
+              <input value={tData?.teamNames?.[key]??''} onChange={e=>updateTournament(d=>({...d,teamNames:{...d.teamNames,[key]:e.target.value}}))}
                 className={`w-full px-2 py-1.5 rounded-xl font-bebas font-bold text-base border outline-none ${key==='team1'?'text-blue-300 border-blue-500/30':'text-red-300 border-red-500/30'}`}
                 style={{background:'rgba(0,0,0,0.3)'}}/>
-              <div className="text-xs text-white/30 mt-2">{tData.teams[key].length}/4 players</div>
+              <div className="text-xs text-white/30 mt-2">{(tData?.teams?.[key]??[]).length}/4 players</div>
             </div>
           ))}
         </div>
@@ -1630,9 +2059,10 @@ export default function GolfScoringApp() {
             <Btn color="green" sm onClick={async()=>{
               try {
                 await updateTournament(d=>({...d,players:[...(d.players||[]),{id:'p'+Date.now(),name:'New Player',handicapIndex:0,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}}]}));
+                showToast('Player added successfully', 'success');
               } catch (err) {
                 console.error('Failed to add player:', err);
-                alert('Error adding player. Please try again.');
+                showToast('Error adding player. Please try again.', 'error');
               }
             }}>
               <span className="flex items-center gap-1"><Plus className="w-3 h-3"/>Add</span>
@@ -1641,23 +2071,54 @@ export default function GolfScoringApp() {
           <div className="space-y-2">
             {(tData.players??[]).map(p=>(
               <div key={p.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-white/8 flex-wrap" style={{background:'rgba(255,255,255,0.04)'}}>
-                <input value={p.name} onChange={e=>updateTournament(d=>({...d,players:(d.players||[]).map(x=>x.id===p.id?{...x,name:e.target.value}:x)}))}
+                <input value={p.name} onChange={e=>{
+                  const newName = e.target.value;
+                  const nameValidation = validation.playerName(newName);
+                  if (!nameValidation.valid && newName.length > 0) {
+                    // Show error but allow typing for real-time feedback
+                    if (newName.length > 50) {
+                      showToast(nameValidation.error, 'error');
+                      return;
+                    }
+                  }
+                  updateTournament(d=>({...d,players:(d.players||[]).map(x=>x.id===p.id?{...x,name:newName}:x)}));
+                }} onBlur={e=>{
+                  // Validate on blur and sanitize
+                  const nameValidation = validation.playerName(e.target.value);
+                  if (!nameValidation.valid) {
+                    showToast(nameValidation.error || 'Invalid player name', 'error');
+                    return;
+                  }
+                  const sanitized = validation.sanitizePlayerName(e.target.value);
+                  updateTournament(d=>({...d,players:(d.players||[]).map(x=>x.id===p.id?{...x,name:sanitized}:x)}));
+                }}
                   className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-white text-sm font-bold border border-white/10 outline-none" style={{background:'rgba(255,255,255,0.07)',minWidth:'80px'}}/>
                 <span className="text-white/30 text-xs">HI:</span>
-                <input type="number" value={p.handicapIndex} onChange={e=>updateTournament(d=>({...d,players:(d.players||[]).map(x=>x.id===p.id?{...x,handicapIndex:parseFloat(e.target.value)||0}:x)}))}
+                <input type="number" step="0.1" value={p.handicapIndex} onChange={e=>{
+                  const newValue = e.target.value;
+                  const parsed = parseFloat(newValue);
+                  if (newValue !== '' && !isNaN(parsed)) {
+                    const hcpValidation = validation.handicapIndex(parsed);
+                    if (!hcpValidation.valid) {
+                      showToast(hcpValidation.error, 'error');
+                      return;
+                    }
+                  }
+                  updateTournament(d=>({...d,players:(d.players||[]).map(x=>x.id===p.id?{...x,handicapIndex:parsed||0}:x)}));
+                }}
                   className="w-14 px-2 py-1.5 rounded-lg text-white text-sm text-center border border-white/10 outline-none" style={{background:'rgba(255,255,255,0.07)'}}/>
                 {tee&&<span className="text-xs text-[#C9A227] font-bold">HC {courseHcp(p.handicapIndex,tee.slope)}</span>}
-                <button onClick={()=>updateTournament(d=>({...d,teams:{team1:(d.teams.team1||[]).includes(p.id)?(d.teams.team1||[]).filter(x=>x!==p.id):[...(d.teams.team1||[]).filter(x=>x!==p.id),p.id],team2:(d.teams.team2||[]).filter(x=>x!==p.id)}}))}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team1.includes(p.id)?'bg-blue-600 text-white border-blue-500':'border-white/10 text-white/40 hover:border-blue-500/50'}`}>{tData.teamNames.team1}</button>
-                <button onClick={()=>updateTournament(d=>({...d,teams:{team2:(d.teams.team2||[]).includes(p.id)?(d.teams.team2||[]).filter(x=>x!==p.id):[...(d.teams.team2||[]).filter(x=>x!==p.id),p.id],team1:(d.teams.team1||[]).filter(x=>x!==p.id)}}))}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${tData.teams.team2.includes(p.id)?'bg-red-600 text-white border-red-500':'border-white/10 text-white/40 hover:border-red-500/50'}`}>{tData.teamNames.team2}</button>
+                <button onClick={()=>updateTournament(d=>({...d,teams:{team1:(d?.teams?.team1??[]).includes(p.id)?(d?.teams?.team1??[]).filter(x=>x!==p.id):[...(d?.teams?.team1??[]).filter(x=>x!==p.id),p.id],team2:(d?.teams?.team2??[]).filter(x=>x!==p.id)}}))}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${(tData?.teams?.team1??[]).includes(p.id)?'bg-blue-600 text-white border-blue-500':'border-white/10 text-white/40 hover:border-blue-500/50'}`}>{tData?.teamNames?.team1??'Team 1'}</button>
+                <button onClick={()=>updateTournament(d=>({...d,teams:{team2:(d?.teams?.team2??[]).includes(p.id)?(d?.teams?.team2??[]).filter(x=>x!==p.id):[...(d?.teams?.team2??[]).filter(x=>x!==p.id),p.id],team1:(d?.teams?.team1??[]).filter(x=>x!==p.id)}}))}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${(tData?.teams?.team2??[]).includes(p.id)?'bg-red-600 text-white border-red-500':'border-white/10 text-white/40 hover:border-red-500/50'}`}>{tData?.teamNames?.team2??'Team 2'}</button>
                 <button onClick={async()=>{
                   if (!confirm(`Delete ${p.name}? This cannot be undone.`)) return;
                   try {
                     await updateTournament(d=>({...d,players:(d.players||[]).filter(x=>x.id!==p.id),teams:{team1:(d.teams.team1||[]).filter(x=>x!==p.id),team2:(d.teams.team2||[]).filter(x=>x!==p.id)}}));
                   } catch (err) {
                     console.error('Failed to delete player:', err);
-                    alert('Error deleting player. Please try again.');
+                    showToast('Error deleting player. Please try again.', 'error');
                   }
                 }}
                   className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>
@@ -1690,13 +2151,13 @@ export default function GolfScoringApp() {
                     await updateTournament(d=>({...d,courses:(d.courses||[]).filter(x=>x.id!==c.id)}));
                   } catch (err) {
                     console.error('Failed to delete course:', err);
-                    alert('Error deleting course. Please try again.');
+                    showToast('Error deleting course. Please try again.', 'error');
                   }
                 }}
                   className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3 h-3"/></button>
               </div>
               <div className="flex gap-2 flex-wrap">
-                {c.tees.map(t=>{
+                {(c.tees??[]).map(t=>{
                   const isActive = tData.activeCourseId===c.id && tData.activeTeeId===t.name;
                   return (
                     <button key={t.name} onClick={()=>updateTournament(d=>({...d,activeCourseId:c.id,activeTeeId:t.name}))}
@@ -1748,7 +2209,7 @@ export default function GolfScoringApp() {
               <div className="overflow-x-auto rounded-xl border border-white/10">
                 <table className="w-full text-xs">
                   <thead><tr className="bg-blue-900/60 text-blue-200">{['Hole','Par','Yards','HDCP'].map(h=><th key={h} className="p-2 text-center font-bold">{h}</th>)}</tr></thead>
-                  <tbody>{t.holes.map((h,hi)=>(
+                  <tbody>{(t.holes??[]).map((h,hi)=>(
                     <tr key={hi} className={hi%2===0?'bg-white/3':'bg-white/5'}>
                       <td className="p-1.5 text-center font-bold text-white/60 border-r border-white/5">{h.h}</td>
                       {(['par','yards','rank'] as const).map(k=>(
@@ -1763,8 +2224,8 @@ export default function GolfScoringApp() {
                 </table>
               </div>
               <div className="flex gap-4 mt-2 text-xs text-blue-300 font-bold">
-                <span>Front: {t.holes.slice(0,9).reduce((s,h)=>s+h.yards,0)}y · Par {t.holes.slice(0,9).reduce((s,h)=>s+h.par,0)}</span>
-                <span>Back: {t.holes.slice(9,18).reduce((s,h)=>s+h.yards,0)}y · Par {t.holes.slice(9,18).reduce((s,h)=>s+h.par,0)}</span>
+                <span>Front: {(t.holes??[]).slice(0,9).reduce((s,h)=>s+(h.yards??0),0)}y · Par {(t.holes??[]).slice(0,9).reduce((s,h)=>s+(h.par??0),0)}</span>
+                <span>Back: {(t.holes??[]).slice(9,18).reduce((s,h)=>s+(h.yards??0),0)}y · Par {(t.holes??[]).slice(9,18).reduce((s,h)=>s+(h.par??0),0)}</span>
               </div>
             </div>
           ))}
@@ -1778,6 +2239,8 @@ export default function GolfScoringApp() {
         </Card>
       </div>
     </BG>
+    <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </>
   );
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -1786,15 +2249,25 @@ export default function GolfScoringApp() {
   if (screen==='tournament') {
     if (!tData) return <BG><TopBar title="Tournament"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
     const players=tData.players??[];
-    const t1pool=tData.teams.team1.map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[];
-    const t2pool=tData.teams.team2.map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[];
+    
+    // Memoize expensive team pool calculations
+    const t1pool = useMemo(() => 
+      (tData?.teams?.team1??[]).map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[],
+      [tData?.teams?.team1, players]
+    );
+    
+    const t2pool = useMemo(() =>
+      (tData?.teams?.team2??[]).map(id=>players.find(p=>p.id===id)).filter(Boolean) as Player[],
+      [tData?.teams?.team2, players]
+    );
 
-    const allTeeOpts = (tData.courses??[]).flatMap(c=>
-      c.tees.map(t=>{
-        const totalYards = t.holes.reduce((s,h)=>s+h.yards,0);
+    // Memoize tee options calculation
+    const allTeeOpts = useMemo(() => (tData.courses??[]).flatMap(c=>
+      (c.tees??[]).map(t=>{
+        const totalYards = (t.holes??[]).reduce((s,h)=>s+(h.yards??0),0);
         return {value:`${c.id}::${t.name}`,label:`${c.name} — ${t.name} (${t.slope}/${t.rating} · P${t.par} · ${totalYards.toLocaleString()}y)`};
       })
-    );
+    ), [tData.courses]);
 
     const MatchCard = ({m}:{m:Match}) => {
       const fmt=FORMATS[m.format];
@@ -1803,15 +2276,15 @@ export default function GolfScoringApp() {
       const totalPts=calcMatchPts(m);
       const isExpanded=expandedMatches[m.id]??false;
       const matchTee=getTeeForMatch(m);
-      const matchCourseName=tData.courses.find(c=>c.id===(m.courseId??tData.activeCourseId))?.name??'';
-      const usedIds=Object.values(m.pairings||{}).flat().filter(Boolean);
+      const matchCourseName=(tData?.courses??[]).find(c=>c.id===(m.courseId??tData.activeCourseId))?.name??'';
+      const usedIds=Object.values(m.pairings??{}).flat().filter(Boolean);
 
       const setMatchCourseTee = async (val: string) => {
         const [cid,tid]=val.split('::');
         try {
           await updateTournament(d=>({...d,matches:(d.matches||[]).map(mx=>{
             if(mx.id!==m.id) return mx;
-            const newTee=tData.courses.find(c=>c.id===cid)?.tees.find(t=>t.name===tid)??null;
+            const newTee=(tData?.courses??[]).find(c=>c.id===cid)?.tees.find(t=>t.name===tid)??null;
             const newHcps: Record<string,number>={};
             for(const [k,ids] of Object.entries(mx.pairings||{})){
               newHcps[k]=(ids?.length&&newTee)?pairingPlayingHcp(ids,mx.format,newTee,d.players):0;
@@ -1820,7 +2293,7 @@ export default function GolfScoringApp() {
           })}));
         } catch (err) {
           console.error('Failed to update course/tee:', err);
-          alert('Error updating course. Please try again.');
+          showToast('Error updating course. Please try again.', 'error');
         }
       };
 
@@ -1839,7 +2312,7 @@ export default function GolfScoringApp() {
           })}));
         } catch (err) {
           console.error('Failed to update pairing:', err);
-          alert('Error updating pairing. Please try again.');
+          showToast('Error updating pairing. Please try again.', 'error');
         }
       };
 
@@ -1891,9 +2364,9 @@ export default function GolfScoringApp() {
               {matchCourseName&&<div className="text-xs text-white/30 mb-1">{matchCourseName} · {matchTee?.name} Tees</div>}
               {result&&(
                 <div className="text-sm font-bold">
-                  <span className="text-blue-300">{tData.teamNames.team1}: {result.teamPoints.team1}pt</span>
+                  <span className="text-blue-300">{tData?.teamNames?.team1??'Team 1'}: {result.teamPoints.team1}pt</span>
                   <span className="text-white/20 mx-2">|</span>
-                  <span className="text-red-300">{tData.teamNames.team2}: {result.teamPoints.team2}pt</span>
+                  <span className="text-red-300">{tData?.teamNames?.team2??'Team 2'}: {result.teamPoints.team2}pt</span>
                 </div>
               )}
             </div>
@@ -1906,18 +2379,23 @@ export default function GolfScoringApp() {
               {role==='admin'&&!m.completed&&(
                 <Btn color="green" sm onClick={()=>{
                   const init: Record<string,(number|null)[]>={};
-                  Object.values(m.pairings||{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                  Object.values(m.pairings??{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                   setLocalScores(init);setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>▶ Play</Btn>
               )}
               {role==='player'&&!m.completed&&(
                 <Btn color="blue" sm onClick={async()=>{
-                  const saved=await loadMatchScores(m.id);
-                  const init: Record<string,(number|null)[]>={};
-                  Object.values(m.pairings||{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                  setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
-                  setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
-                }}>Enter Scores</Btn>
+                  setEnteringScores(true);
+                  try {
+                    const saved=await loadMatchScores(m.id);
+                    const init: Record<string,(number|null)[]>={};
+                    Object.values(m.pairings??{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                    setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
+                    setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                  } finally {
+                    setEnteringScores(false);
+                  }
+                }} loading={enteringScores} disabled={enteringScores}>Enter Scores</Btn>
               )}
               {role==='admin'&&<button onClick={async()=>{
                 if (!confirm(`Delete this ${FORMATS[m.format]?.name} match? This cannot be undone.`)) return;
@@ -1925,7 +2403,7 @@ export default function GolfScoringApp() {
                   await updateTournament(d=>({...d,matches:(d.matches||[]).filter(x=>x.id!==m.id)}));
                 } catch (err) {
                   console.error('Failed to delete match:', err);
-                  alert('Error deleting match. Please try again.');
+                  showToast('Error deleting match. Please try again.', 'error');
                 }
               }} className="p-1.5 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4"/></button>}
               {m.completed&&<Btn color="ghost" sm onClick={()=>setViewingMatchId(m.id)}>📋 Card</Btn>}
@@ -1933,7 +2411,7 @@ export default function GolfScoringApp() {
                 <Btn color="ghost" sm onClick={async()=>{
                   const saved=await loadMatchScores(m.id);
                   const init: Record<string,(number|null)[]>={};
-                  Object.values(m.pairings||{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                  Object.values(m.pairings??{}).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                   setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
                   setActiveMatchId(m.id);setCurrentHole(1);setEditingScores(true);setScreen('scoring');
                 }}>✏️</Btn>
@@ -1954,21 +2432,21 @@ export default function GolfScoringApp() {
                         <div className="text-xs font-bold text-white/40 mb-2">Match {i+1}</div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <div className="text-xs text-blue-300 font-bold mb-1">{tData.teamNames.team1}</div>
+                            <div className="text-xs text-blue-300 font-bold mb-1">{tData?.teamNames?.team1??'Team 1'}</div>
                             <select value={m.pairings[a]?.[0]??''} onChange={e=>setMatchPairing(a,0,e.target.value)}
                               className="w-full px-2 py-2 rounded-lg text-white text-xs border border-white/10 outline-none appearance-none" style={{background:'rgba(10,22,40,0.9)'}}>
                               {playerOpts(t1pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[a]?.[0]}>{o.label}</option>)}
                             </select>
                           </div>
                           <div>
-                            <div className="text-xs text-red-300 font-bold mb-1">{tData.teamNames.team2}</div>
+                            <div className="text-xs text-red-300 font-bold mb-1">{tData?.teamNames?.team2??'Team 2'}</div>
                             <select value={m.pairings[b]?.[0]??''} onChange={e=>setMatchPairing(b,0,e.target.value)}
                               className="w-full px-2 py-2 rounded-lg text-white text-xs border border-white/10 outline-none appearance-none" style={{background:'rgba(10,22,40,0.9)'}}>
                               {playerOpts(t2pool).map(o=><option key={o.value} value={o.value} disabled={usedIds.includes(o.value)&&o.value!==m.pairings[b]?.[0]}>{o.label}</option>)}
                             </select>
                           </div>
                         </div>
-                        {(m.pairingHcps[a]||m.pairingHcps[b])&&(
+                        {((m.pairingHcps?.[a]??0)||(m.pairingHcps?.[b]??0))&&(
                           <div className="text-xs text-white/30 mt-1 text-center">HC {m.pairingHcps[a]??0} vs {m.pairingHcps[b]??0}</div>
                         )}
                       </div>
@@ -1981,16 +2459,16 @@ export default function GolfScoringApp() {
                   <div className="p-3 rounded-xl border border-white/10" style={{background:'rgba(255,255,255,0.04)'}}>
                     <div className="text-xs font-bold text-white/40 mb-2">Pairing 1</div>
                     <div className="grid grid-cols-2 gap-2">
-                      <PairingPicker pk="t1p1" label={tData.teamNames.team1} pool={t1pool} isT1 oppPk="t2p1"/>
-                      <PairingPicker pk="t2p1" label={tData.teamNames.team2} pool={t2pool} isT1={false} oppPk="t1p1"/>
+                      <PairingPicker pk="t1p1" label={tData?.teamNames?.team1??'Team 1'} pool={t1pool} isT1 oppPk="t2p1"/>
+                      <PairingPicker pk="t2p1" label={tData?.teamNames?.team2??'Team 2'} pool={t2pool} isT1={false} oppPk="t1p1"/>
                     </div>
                   </div>
                   {/* Pairing 2 */}
                   <div className="p-3 rounded-xl border border-white/10" style={{background:'rgba(255,255,255,0.04)'}}>
                     <div className="text-xs font-bold text-white/40 mb-2">Pairing 2</div>
                     <div className="grid grid-cols-2 gap-2">
-                      <PairingPicker pk="t1p2" label={tData.teamNames.team1} pool={t1pool} isT1 oppPk="t2p2"/>
-                      <PairingPicker pk="t2p2" label={tData.teamNames.team2} pool={t2pool} isT1={false} oppPk="t1p2"/>
+                      <PairingPicker pk="t1p2" label={tData?.teamNames?.team1??'Team 1'} pool={t1pool} isT1 oppPk="t2p2"/>
+                      <PairingPicker pk="t2p2" label={tData?.teamNames?.team2??'Team 2'} pool={t2pool} isT1={false} oppPk="t1p2"/>
                     </div>
                   </div>
                 </div>
@@ -2002,8 +2480,8 @@ export default function GolfScoringApp() {
     };
 
     const AddMatchForm = () => {
-      const defaultCourse = tData.courses[0];
-      const defaultTee = defaultCourse?.tees[0];
+      const defaultCourse = (tData?.courses??[])[0];
+      const defaultTee = defaultCourse?.tees?.[0];
       const [f,setF] = useState({
         format:'bestball', startHole:1, holes:9,
         courseId: tData.activeCourseId??defaultCourse?.id??'',
@@ -2030,21 +2508,24 @@ export default function GolfScoringApp() {
           </div>
           <div className="flex gap-2">
             <Btn color="gold" onClick={async()=>{
-              const {pairings,pairingHcps} = getEmptyPairings(f.format);
-              const m: Match={
-                id:'m'+Date.now(),format:f.format,startHole:f.startHole,holes:f.holes,
-                pairings,pairingHcps,completed:false,courseId:f.courseId,teeId:f.teeId,
-              };
+              setMatchLoading(true);
               try {
+                const {pairings,pairingHcps} = getEmptyPairings(f.format);
+                const m: Match={
+                  id:'m'+Date.now(),format:f.format,startHole:f.startHole,holes:f.holes,
+                  pairings,pairingHcps,completed:false,courseId:f.courseId,teeId:f.teeId,
+                };
                 // FIX: Handle Firebase converting empty arrays to null
                 await updateTournament(d=>({...d,matches:[...(d.matches||[]),m]}));
                 setShowMatchBuilder(false);
               } catch (err) {
                 console.error('Failed to add match:', err);
-                alert('Error adding match. Please try again.');
+                showToast('Error adding match. Please try again.', 'error');
+              } finally {
+                setMatchLoading(false);
               }
-            }}>Add Match</Btn>
-            <Btn color="ghost" onClick={()=>setShowMatchBuilder(false)}>Cancel</Btn>
+            }} loading={matchLoading} disabled={matchLoading}>Add Match</Btn>
+            <Btn color="ghost" onClick={()=>setShowMatchBuilder(false)} disabled={matchLoading}>Cancel</Btn>
           </div>
         </div>
       );
@@ -2058,7 +2539,7 @@ export default function GolfScoringApp() {
           <div className="grid grid-cols-3 gap-3">
             <Card blue className="p-4 text-center">
               <div className="font-bebas font-bold text-white text-5xl leading-none">{t1pts}</div>
-              <div className="font-bold text-white text-sm mt-1 truncate">{tData.teamNames.team1}</div>
+              <div className="font-bold text-white text-sm mt-1 truncate">{tData?.teamNames?.team1??'Team 1'}</div>
               {possiblePts>0&&<div className="text-xs text-white/60 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
             </Card>
             <Card className="p-4 text-center flex flex-col justify-center">
@@ -2068,7 +2549,7 @@ export default function GolfScoringApp() {
             </Card>
             <Card className="p-4 text-center card-red">
               <div className="font-bebas font-bold text-red-300 text-5xl leading-none">{t2pts}</div>
-              <div className="font-bold text-red-200 text-sm mt-1 truncate">{tData.teamNames.team2}</div>
+              <div className="font-bold text-red-200 text-sm mt-1 truncate">{tData?.teamNames?.team2??'Team 2'}</div>
               {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
             </Card>
           </div>
@@ -2117,15 +2598,15 @@ export default function GolfScoringApp() {
                     <div className="p-4 border-b border-white/10 sticky top-0 flex items-center justify-between" style={{background:'#0D1B2A'}}>
                       <div>
                         <div className="font-bebas font-bold text-white text-lg">{vfmt.name} · {vm.startHole===1?'Front':'Back'} 9</div>
-                        <div className="text-xs text-white/30">{tData.courses.find(c=>c.id===(vm.courseId??tData.activeCourseId))?.name} · {vtee?.name} Tees</div>
+                        <div className="text-xs text-white/30">{(tData?.courses??[]).find(c=>c.id===(vm.courseId??tData.activeCourseId))?.name} · {vtee?.name} Tees</div>
                       </div>
                       <button onClick={()=>setViewingMatchId(null)} className="text-white/40 hover:text-white text-2xl leading-none">✕</button>
                     </div>
                     {vresult&&(
                       <div className="px-4 py-3 border-b border-white/10 flex gap-8 justify-center text-center">
-                        <div><div className="font-bebas font-bold text-3xl text-blue-300">{vresult.teamPoints.team1}</div><div className="text-xs text-blue-300/60">{tData.teamNames.team1}</div></div>
+                        <div><div className="font-bebas font-bold text-3xl text-blue-300">{vresult.teamPoints.team1}</div><div className="text-xs text-blue-300/60">{tData?.teamNames?.team1??'Team 1'}</div></div>
                         <div className="text-white/20 text-3xl self-center">/</div>
-                        <div><div className="font-bebas font-bold text-3xl text-red-300">{vresult.teamPoints.team2}</div><div className="text-xs text-red-300/60">{tData.teamNames.team2}</div></div>
+                        <div><div className="font-bebas font-bold text-3xl text-red-300">{vresult.teamPoints.team2}</div><div className="text-xs text-red-300/60">{tData?.teamNames?.team2??'Team 2'}</div></div>
                       </div>
                     )}
                     <div className="p-4 overflow-x-auto">
@@ -2144,7 +2625,7 @@ export default function GolfScoringApp() {
                         <tbody>
                           {allIds.map((id,ri)=>{
                             const p=vplayers.find(x=>x.id===id);
-                            const isT1=tData.teams.team1.includes(id);
+                            const isT1=(tData?.teams?.team1??[]).includes(id);
                             const scores=vscores[id]??[];
                             const total=scores.filter((v): v is number=>v!=null).reduce((a,b)=>a+b,0);
                             return (
@@ -2187,7 +2668,7 @@ export default function GolfScoringApp() {
                             return (
                               <div key={h} className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold ${bg}`}>
                                 <div className="text-base font-bebas font-bold">{ah}</div>
-                                <div className="text-xs opacity-75">{wins.t1>wins.t2?tData.teamNames.team1.slice(0,1):wins.t2>wins.t1?tData.teamNames.team2.slice(0,1):'—'}</div>
+                                <div className="text-xs opacity-75">{wins.t1>wins.t2?(tData?.teamNames?.team1??'Team 1').slice(0,1):wins.t2>wins.t1?(tData?.teamNames?.team2??'Team 2').slice(0,1):'—'}</div>
                               </div>
                             );
                           })}
@@ -2240,10 +2721,10 @@ export default function GolfScoringApp() {
       const isT1=pk.startsWith('t1');
       const oppPk=isT1?(pk==='t1p1'?'t2p1':'t2p2'):(pk==='t2p1'?'t1p1':'t1p2');
       const skinSt=skinsStrokes(m.pairingHcps,rank);
-      const {t1:mp1}=matchplayStrokes(m.pairingHcps.t1p1??0,m.pairingHcps.t2p1??0,rank);
-      const {t1:mp2}=matchplayStrokes(m.pairingHcps.t1p2??0,m.pairingHcps.t2p2??0,rank);
-      const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps.t1p1??0,m.pairingHcps.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps.t1p2??0,m.pairingHcps.t2p2??0,rank).t2);
-      const isScramble=['scramble','alternateshot','modifiedscramble'].includes(m.format);
+      const {t1:mp1}=matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank);
+      const {t1:mp2}=matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank);
+      const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank).t2);
+      const isScramble=['scramble','alternateshot','modifiedscramble','greensomes'].includes(m.format);
       const isBestBall = m.format === 'bestball';
       
       // For Best Ball: calculate individual player strokes WITHIN this pairing
@@ -2396,7 +2877,7 @@ export default function GolfScoringApp() {
           <div className="px-4 pb-2 flex items-center gap-2 flex-wrap">
             <span className="text-xs text-white/30">{fmt.name}</span>
             <span className="text-white/10">·</span>
-            <span className="text-xs text-white/30">{tData.courses.find(c=>c.id===(m.courseId??tData.activeCourseId))?.name} {matchTee?.name}</span>
+            <span className="text-xs text-white/30">{(tData?.courses??[]).find(c=>c.id===(m.courseId??tData.activeCourseId))?.name} {matchTee?.name}</span>
             {editingScores&&<Badge color="orange">Editing</Badge>}
           </div>
 
@@ -2427,8 +2908,8 @@ export default function GolfScoringApp() {
             <div className="space-y-1.5">
               {holeRes.matchupResults.map((r,i)=>{
                 const isTeam=(r as any).isTeamResult;
-                const aLabel=isTeam?tData.teamNames.team1:(m.pairings[r.a]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join(' & ');
-                const bLabel=isTeam?tData.teamNames.team2:(m.pairings[r.b]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join(' & ');
+                const aLabel=isTeam?tData?.teamNames?.team1??'Team 1':(m.pairings[r.a]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join(' & ');
+                const bLabel=isTeam?tData?.teamNames?.team2??'Team 2':(m.pairings[r.b]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join(' & ');
                 return r.winner&&(
                   <div key={i} className={`px-4 py-2.5 rounded-xl text-sm font-bold text-center border ${r.winner==='tie'?'border-white/20 text-white/60 bg-white/5':r.winner==='t1p'?'border-blue-500/40 text-blue-300 bg-blue-950/40':'border-red-500/40 text-red-300 bg-red-950/40'}`}>
                     {r.winner==='tie'
@@ -2475,18 +2956,52 @@ export default function GolfScoringApp() {
 
           {/* Navigation buttons */}
           <div className="flex gap-3 pt-2">
-            <Btn color="ghost" onClick={()=>setCurrentHole(h=>Math.max(1,h-1))} disabled={currentHole===1} className="flex-1 flex items-center justify-center gap-1">
+            <Btn color="ghost" onClick={()=>setCurrentHole(h=>Math.max(1,h-1))} disabled={currentHole===1||scoringLoading} className="flex-1 flex items-center justify-center gap-1">
               <ChevronLeft className="w-4 h-4"/>Prev
             </Btn>
             {currentHole<m.holes
-              ? <Btn color="gold" onClick={async()=>{await saveScores();setCurrentHole(h=>h+1);}} className="flex-1 flex items-center justify-center gap-1">
+              ? <Btn color="gold" onClick={async()=>{
+                  setScoringLoading(true);
+                  try {
+                    await saveScores();
+                    setCurrentHole(h=>h+1);
+                  } finally {
+                    setScoringLoading(false);
+                  }
+                }} loading={scoringLoading} disabled={scoringLoading} className="flex-1 flex items-center justify-center gap-1">
                   Next<ChevronRight className="w-4 h-4"/>
                 </Btn>
-              : <Btn color="green" disabled={role==='player'&&!editingScores} onClick={async()=>{await saveScores();await finishMatch();setEditingScores(false);}} className="flex-1 flex items-center justify-center gap-1">
+              : <Btn color="green" disabled={role==='player'&&!editingScores||scoringLoading} loading={scoringLoading} onClick={async()=>{
+                  // Confirm before completing match if not already completed
+                  if (!m.completed && !confirm('Mark this match as complete? Scores will be final.')) {
+                    return;
+                  }
+                  setScoringLoading(true);
+                  try {
+                    await saveScores();
+                    await finishMatch();
+                    setEditingScores(false);
+                  } finally {
+                    setScoringLoading(false);
+                  }
+                }} className="flex-1 flex items-center justify-center gap-1">
                   <Save className="w-4 h-4"/>{editingScores?'Save Changes':role==='admin'?'Complete Match':'Save & Exit'}
                 </Btn>
             }
-            {editingScores&&<Btn color="orange" onClick={async()=>{await saveScores();await finishMatch();setEditingScores(false);}} className="flex-1 flex items-center justify-center gap-1">
+            {editingScores&&<Btn color="orange" onClick={async()=>{
+              // Confirm before re-completing already completed match
+              if (!confirm('Save changes to this completed match? This will update the final scores.')) {
+                return;
+              }
+              setScoringLoading(true);
+              try {
+                await saveScores();
+                await finishMatch();
+                setEditingScores(false);
+              } finally {
+                setScoringLoading(false);
+              }
+            }} loading={scoringLoading} disabled={scoringLoading} className="flex-1 flex items-center justify-center gap-1">
               <Save className="w-4 h-4"/>Save Changes
             </Btn>}
           </div>
@@ -2502,16 +3017,22 @@ export default function GolfScoringApp() {
   if (screen==='standings') {
     if (!tData) return <BG><TopBar title="Standings"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
     const players=tData.players??[];
-    const contribs=[...players].map(p=>({
-      ...p,
-      pts: p.stats?.pointsContributed||0,
-      net: p.stats?.netUnderPar||0,
-      skins: p.stats?.skinsWon||0,
-    })).sort((a,b)=>
-      b.pts!==a.pts ? b.pts-a.pts :
-      b.net!==a.net ? b.net-a.net :
-      b.skins-a.skins
+    
+    // Memoize expensive MVP ranking calculation
+    const contribs = useMemo(() => 
+      [...players].map(p=>({
+        ...p,
+        pts: p.stats?.pointsContributed||0,
+        net: p.stats?.netUnderPar||0,
+        skins: p.stats?.skinsWon||0,
+      })).sort((a,b)=>
+        b.pts!==a.pts ? b.pts-a.pts :
+        b.net!==a.net ? b.net-a.net :
+        b.skins-a.skins
+      ),
+      [players]
     );
+    
     const played=tData.matchResults?.length||0;
     const remaining=(tData.matches?.length||0)-played;
 
@@ -2528,7 +3049,7 @@ export default function GolfScoringApp() {
             <div className="relative flex items-center justify-between">
               <div className="text-center flex-1">
                 <div className="font-bebas font-black text-6xl text-blue-200 leading-none drop-shadow-lg">{t1pts}</div>
-                <div className="font-bebas font-bold text-blue-300 text-lg mt-1">{tData.teamNames.team1}</div>
+                <div className="font-bebas font-bold text-blue-300 text-lg mt-1">{tData?.teamNames?.team1??'Team 1'}</div>
                 {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
               </div>
               <div className="text-center px-4">
@@ -2539,7 +3060,7 @@ export default function GolfScoringApp() {
               </div>
               <div className="text-center flex-1">
                 <div className="font-bebas font-black text-6xl text-red-200 leading-none drop-shadow-lg">{t2pts}</div>
-                <div className="font-bebas font-bold text-red-300 text-lg mt-1">{tData.teamNames.team2}</div>
+                <div className="font-bebas font-bold text-red-300 text-lg mt-1">{tData?.teamNames?.team2??'Team 2'}</div>
                 {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
               </div>
             </div>
@@ -2563,12 +3084,12 @@ export default function GolfScoringApp() {
                   <div className="flex items-center gap-3 text-center">
                     <div>
                       <div className={`font-bebas font-black text-2xl ${t1won?'text-blue-600':'text-gray-400'}`}>{r.teamPoints.team1}</div>
-                      <div className="text-xs text-blue-600">{tData.teamNames.team1}</div>
+                      <div className="text-xs text-blue-600">{tData?.teamNames?.team1??'Team 1'}</div>
                     </div>
                     <div className="text-white/20 font-bold">–</div>
                     <div>
                       <div className={`font-bebas font-black text-2xl ${t2won?'text-red-600':'text-gray-400'}`}>{r.teamPoints.team2}</div>
-                      <div className="text-xs text-red-600">{tData.teamNames.team2}</div>
+                      <div className="text-xs text-red-600">{tData?.teamNames?.team2??'Team 2'}</div>
                     </div>
                   </div>
                 </div>
@@ -2585,7 +3106,7 @@ export default function GolfScoringApp() {
             <div className="space-y-2">
               {contribs.map((p,i)=>{
                 const isTop = i===0;
-                const isT1 = tData.teams.team1.includes(p.id);
+                const isT1 = (tData?.teams?.team1??[]).includes(p.id);
                 return (
                   <div key={p.id} className={`p-3 rounded-xl border transition-all ${isTop?'border-yellow-500/50':'border-white/10'}`} style={{background:isTop?'rgba(201,162,39,0.12)':'rgba(255,255,255,0.04)'}}>
                     <div className="flex items-center justify-between gap-2">
@@ -2593,7 +3114,7 @@ export default function GolfScoringApp() {
                         <span className="text-xl shrink-0">{i===0?'🏆':i===1?'🥈':i===2?'🥉':`${i+1}`}</span>
                         <div className="min-w-0">
                           <div className={`font-bebas font-bold truncate ${isTop?'text-yellow-200':'text-white'}`}>{p.name}</div>
-                          <div className={`text-xs ${isT1?'text-blue-600':'text-red-600'}`}>{isT1?tData.teamNames.team1:tData.teamNames.team2}</div>
+                          <div className={`text-xs ${isT1?'text-blue-600':'text-red-600'}`}>{isT1?tData?.teamNames?.team1??'Team 1':tData?.teamNames?.team2??'Team 2'}</div>
                         </div>
                       </div>
                       <div className="flex gap-3 text-center text-xs shrink-0">
@@ -2630,8 +3151,8 @@ export default function GolfScoringApp() {
     const matches = tData.matches ?? [];
     const matchResults = tData.matchResults ?? [];
     
-    // Calculate skins for each course
-    const courseSkinsData = courses.map(course => {
+    // Memoize expensive skins calculation for each course
+    const courseSkinsData = useMemo(() => courses.map(course => {
       // Find all matches played on this course
       const courseMatches = matches.filter(m => m.courseId === course.id);
       const completedMatchIds = matchResults.map(r => r.matchId);
@@ -2769,7 +3290,7 @@ export default function GolfScoringApp() {
         completedMatches: completedCourseMatches.length,
         totalMatches: courseMatches.length,
       };
-    });
+    }), [courses, matches, matchResults, allMatchScores, tData.players, skinsPots]);
     
     return (
       <BG>
@@ -2922,5 +3443,278 @@ export default function GolfScoringApp() {
     );
   }
 
-  return null;
+  return (
+    <>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ERROR BOUNDARY
+// ═══════════════════════════════════════════════════════════════════════════════
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: React.ErrorInfo | null;
+}
+
+class ErrorBoundary extends Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log error details to console for debugging
+    console.error('═══════════════════════════════════════════════════════════');
+    console.error('⚠️  ERROR BOUNDARY CAUGHT AN ERROR');
+    console.error('═══════════════════════════════════════════════════════════');
+    console.error('Error:', error);
+    console.error('Error Message:', error.message);
+    console.error('Error Stack:', error.stack);
+    console.error('Component Stack:', errorInfo.componentStack);
+    console.error('Timestamp:', new Date().toISOString());
+    console.error('═══════════════════════════════════════════════════════════');
+
+    // Update state with error details
+    this.setState({
+      error,
+      errorInfo
+    });
+  }
+
+  handleReload = () => {
+    // Clear error state and reload the page
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          background: 'linear-gradient(135deg, #0A1628 0%, #1E3A5F 50%, #0D1B2A 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            maxWidth: '500px',
+            width: '100%',
+            background: 'rgba(13, 27, 42, 0.95)',
+            border: '2px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '24px',
+            padding: '40px',
+            textAlign: 'center',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)'
+          }}>
+            {/* Logo */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              marginBottom: '24px'
+            }}>
+              <div style={{
+                position: 'relative',
+                width: '80px',
+                height: '80px'
+              }}>
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  borderRadius: '50%',
+                  background: 'radial-gradient(circle, #C9A227, transparent 70%)',
+                  filter: 'blur(20px)',
+                  opacity: 0.5
+                }} />
+                <div style={{
+                  position: 'relative',
+                  zIndex: 10,
+                  borderRadius: '50%',
+                  padding: '2px',
+                  background: 'linear-gradient(135deg, #B8860B, #C9A227, #E5C04A, #C9A227)',
+                  boxShadow: '0 0 30px rgba(201, 162, 39, 0.5)'
+                }}>
+                  <div style={{
+                    borderRadius: '50%',
+                    overflow: 'hidden',
+                    width: '76px',
+                    height: '76px',
+                    background: '#0A1628',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <svg width="76" height="76" viewBox="0 0 110 110">
+                      <text
+                        x="55"
+                        y="75"
+                        fontFamily="Bebas Neue, Arial Black, sans-serif"
+                        fontSize="70"
+                        fontWeight="900"
+                        fill="#C9A227"
+                        textAnchor="middle"
+                      >
+                        W
+                      </text>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Error Icon */}
+            <div style={{
+              fontSize: '48px',
+              marginBottom: '16px'
+            }}>
+              ⚠️
+            </div>
+
+            {/* Title */}
+            <h1 style={{
+              fontFamily: 'Bebas Neue, Arial Black, sans-serif',
+              fontSize: '32px',
+              color: 'white',
+              marginBottom: '16px',
+              letterSpacing: '0.05em'
+            }}>
+              SOMETHING WENT WRONG
+            </h1>
+
+            {/* Message */}
+            <p style={{
+              color: 'rgba(255, 255, 255, 0.6)',
+              fontSize: '16px',
+              lineHeight: '1.6',
+              marginBottom: '8px'
+            }}>
+              The Warrior Cup app encountered an unexpected error.
+            </p>
+            <p style={{
+              color: 'rgba(255, 255, 255, 0.6)',
+              fontSize: '16px',
+              lineHeight: '1.6',
+              marginBottom: '32px'
+            }}>
+              Please reload the app to continue.
+            </p>
+
+            {/* Error Details (collapsed by default) */}
+            {this.state.error && (
+              <details style={{
+                marginBottom: '24px',
+                textAlign: 'left',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '12px',
+                padding: '16px'
+              }}>
+                <summary style={{
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  fontWeight: 'bold',
+                  marginBottom: '8px'
+                }}>
+                  Technical Details
+                </summary>
+                <div style={{
+                  marginTop: '12px',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word'
+                }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong style={{ color: '#C9A227' }}>Error:</strong> {this.state.error.message}
+                  </div>
+                  {this.state.error.stack && (
+                    <div style={{
+                      maxHeight: '200px',
+                      overflow: 'auto',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      padding: '8px',
+                      borderRadius: '4px',
+                      fontSize: '10px'
+                    }}>
+                      {this.state.error.stack}
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
+
+            {/* Reload Button */}
+            <button
+              onClick={this.handleReload}
+              style={{
+                width: '100%',
+                padding: '16px',
+                background: 'linear-gradient(135deg, #B8860B, #C9A227)',
+                border: 'none',
+                borderRadius: '12px',
+                fontFamily: 'Bebas Neue, Arial Black, sans-serif',
+                fontSize: '18px',
+                letterSpacing: '0.1em',
+                color: '#0A1628',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(201, 162, 39, 0.3)',
+                transition: 'all 0.2s ease',
+                fontWeight: 'bold'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 16px rgba(201, 162, 39, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(201, 162, 39, 0.3)';
+              }}
+            >
+              RELOAD APP
+            </button>
+
+            {/* Subtitle */}
+            <p style={{
+              marginTop: '24px',
+              color: 'rgba(255, 255, 255, 0.3)',
+              fontSize: '12px',
+              letterSpacing: '0.3em',
+              textTransform: 'uppercase',
+              fontFamily: 'Bebas Neue, Arial, sans-serif'
+            }}>
+              GO BLUE
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXPORT WITH ERROR BOUNDARY
+// ═══════════════════════════════════════════════════════════════════════════════
+export default function WarriorCupApp() {
+  return (
+    <ErrorBoundary>
+      <GolfScoringApp />
+    </ErrorBoundary>
+  );
 }
