@@ -552,12 +552,7 @@ ScriptWboro.displayName = 'ScriptWboro';
 
 // ─── Theme: Whitesboro Warriors — Navy / Royal Blue / Gold ───────────────────
 // Navy: #0A1628 | Royal Blue: #006BB6 | Gold: #C9A227 | White: #F0F4FF
-
-// NOTE: Add Google Fonts to app/layout.tsx instead of here!
-// Add this to your layout.tsx or _document.tsx:
-// <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-
-const GLOBAL_STYLES = `
+const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
 body { font-family: 'Inter', system-ui, sans-serif; }
 .font-bebas { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.06em; }
@@ -578,7 +573,7 @@ input, select, textarea { font-size: 16px !important; }
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 const BG = memo(({children}: {children: React.ReactNode}) => (
   <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
-    <style suppressHydrationWarning>{GLOBAL_STYLES}</style>
+    <style suppressHydrationWarning>{FONTS}</style>
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
       {/* Subtle diagonal rule grid */}
       <div className="absolute inset-0" style={{backgroundImage:'repeating-linear-gradient(135deg,rgba(0,107,182,0.04) 0px,rgba(0,107,182,0.04) 1px,transparent 1px,transparent 60px)'}}/>
