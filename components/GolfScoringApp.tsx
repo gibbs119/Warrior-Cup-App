@@ -573,7 +573,7 @@ input, select, textarea { font-size: 16px !important; }
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 const BG = memo(({children}: {children: React.ReactNode}) => (
   <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
-    <style>{FONTS}</style>
+    <style suppressHydrationWarning>{FONTS}</style>
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
       {/* Subtle diagonal rule grid */}
       <div className="absolute inset-0" style={{backgroundImage:'repeating-linear-gradient(135deg,rgba(0,107,182,0.04) 0px,rgba(0,107,182,0.04) 1px,transparent 1px,transparent 60px)'}}/>
