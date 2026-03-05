@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata } from 'next';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Warrior Cup",
-  description: "Golf Tournament Scoring",
+  title: 'Warrior Cup',
+  description: 'Ryder Cup Style Golf Tournament',
 };
 
 export default function RootLayout({
