@@ -1646,7 +1646,7 @@ function GolfScoringApp() {
           'Uses TEAM/PAIRING handicaps, not individual player handicaps',
           'Best NET score from all pairings wins the skin',
           'Team handicap based on combined ability of both players',
-          'If tied, skin carries over to next hole'
+          'If tied, no one wins that hole\'s skin'
         ],
         example: 'Hole 3 (Par 4, Rank 7): Team A players shoot 4 & 6. Player with 4 gets 1 stroke = net 3. Team B shoots 5 & 5. Player with first 5 gets no stroke = net 5. Team A wins hole with net 3.'
       },
@@ -1847,13 +1847,12 @@ function GolfScoringApp() {
               >
                 <div>
                   <div className="font-bebas font-bold text-white text-lg">{details.name}</div>
-                  <div className="text-xs text-white/40 mt-0.5">{FORMATS[key]?.desc}</div>
+                  <div className="text-xs text-white/40 mt-0.5">{FORMATS[key]?.desc || ''}</div>
                 </div>
                 <ChevronDown className={`w-5 h-5 text-white/40 transition-transform ${selectedFormat === key ? 'rotate-180' : ''}`}/>
               </button>
 
-              {selectedFormat === key && (
-                <div className="px-4 pb-4 space-y-4 border-t border-white/10">
+              <div className={`px-4 pb-4 space-y-4 border-t border-white/10 ${selectedFormat === key ? '' : 'hidden'}`}>
                   {/* Overview */}
                   <div className="pt-4">
                     <div className="text-sm text-white/80 leading-relaxed">
@@ -1944,7 +1943,7 @@ function GolfScoringApp() {
                     </p>
                   </div>
                 </div>
-              )}
+              </div>
             </Card>
           ))}
 
@@ -1965,7 +1964,7 @@ function GolfScoringApp() {
                     <span className="text-white font-semibold">Hole Ranking:</span> Holes ranked 1-18 by difficulty. Stroke holes (hardest) get ranked 1, 3, 5, etc.
                   </div>
                   <div>
-                    <span className="text-white font-semibold">Skins:</span> Side competition where the best net score on each hole wins. If tied, the "skin" carries over.
+                    <span className="text-white font-semibold">Skins:</span> Side competition where the best net score on each hole wins. If tied, no one wins that hole's skin.
                   </div>
                 </div>
               </div>
