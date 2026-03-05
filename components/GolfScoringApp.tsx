@@ -1244,7 +1244,7 @@ function GolfScoringApp() {
       
       allPkKeys.forEach(pk => {
         const ids = m.pairings[pk] ?? [];
-        const pairingStrokes = skinStrokesPerPairing[pk] || 0;
+        const pairingStrokes = skinSt[pk] || 0;
         
         ids.forEach(playerId => {
           const raw = scores[playerId]?.[hole-1];
