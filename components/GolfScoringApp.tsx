@@ -1605,7 +1605,6 @@ function GolfScoringApp() {
       </div>
     </BG>
   );
-  }
 
   // ══════════════════════════════════════════════════════════════════════════════
   // GLOSSARY SCREEN - Game format explanations and rules (no tData required)
