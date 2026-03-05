@@ -433,6 +433,7 @@ const calcGlobalSkinsForHole = (
     const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
     const fmt = FORMATS[m.format];
     const isSingles = fmt?.ppp === 1;
+    const isBestBall = m.format === 'bestball';
     
     // Get all pairing keys for this match
     const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
@@ -441,31 +442,31 @@ const calcGlobalSkinsForHole = (
       const ids = (m.pairings??{})[pk] ?? [];
       if (ids.length === 0) continue;
       
-      // Calculate raw score for this pairing on this hole
-      let raw: number | null = null;
-      if (isSingles) {
-        // Singles: individual score
-        const pid = ids[0];
-        raw = scores[pid]?.[hole - 1] ?? null;
-      } else if (fmt?.hcpType === 'avg75' || fmt?.hcpType === 'avg' || fmt?.hcpType === '6040') {
-        // Scramble/Modified Scramble/Alternate Shot/Greensomes: team score (single score for the pairing)
-        const pid = ids[0];
-        raw = scores[pid]?.[hole - 1] ?? null;
+      // For Best Ball and Singles: track INDIVIDUAL players
+      // For team formats: track pairings
+      if (isBestBall || isSingles) {
+        // Each player competes individually for skins
+        const pairingStrokes = skinSt[pk] || 0;
+        for (const playerId of ids) {
+          const raw = scores[playerId]?.[hole - 1] ?? null;
+          if (raw == null) continue;
+          const net = raw - pairingStrokes;
+          allEntries.push({ matchId: m.id, pk, playerIds: [playerId], net });
+        }
       } else {
-        // Best Ball: best of the pairing's scores
-        const playerScores = ids.map(id => scores[id]?.[hole - 1]).filter((v): v is number => v != null);
-        if (playerScores.length > 0) raw = Math.min(...playerScores);
+        // Team formats (scramble, alternate, greensomes, etc): team score
+        const pid = ids[0];
+        const raw = scores[pid]?.[hole - 1] ?? null;
+        if (raw == null) continue;
+        const net = raw - (skinSt[pk] || 0);
+        allEntries.push({ matchId: m.id, pk, playerIds: ids, net });
       }
-      
-      if (raw == null) continue;
-      const net = raw - (skinSt[pk] || 0);
-      allEntries.push({ matchId: m.id, pk, playerIds: ids, net });
     }
   }
   
   if (allEntries.length === 0) return null;
   
-  // Find the lowest net score
+  // Find the lowest net score across ALL entries (all players in all matches)
   const best = Math.min(...allEntries.map(e => e.net));
   const winners = allEntries.filter(e => e.net === best);
   
@@ -860,7 +861,7 @@ function GolfScoringApp() {
       })();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, tData?.matches?.length]);
+  }, [screen, tData?.matches?.length, tData?.matchResults?.length]);
 
   // ── Firebase CRUD ────────────────────────────────────────────────────────────
   // ─── Firebase Operations (Concurrent-Safe) ────────────────────────────────────
@@ -1236,26 +1237,34 @@ function GolfScoringApp() {
         return {a,b,netA,netB,winner:netA<netB?'t1p':netB<netA?'t2p':'tie'};
       });
       
-      // Skins for Best Ball - use PAIRING handicaps (team level), not individual player strokes
-      // Skins compete across all pairings, so use the team handicap differences
-      const skinStrokesPerPairing = skinsStrokes(m.pairingHcps, rank);
+      // Skins for Best Ball - INDIVIDUAL COMPETITION across all players
+      // Each individual player competes for skins, not pairings/teams
       const allPkKeys = Object.keys(m.pairings??{});
-      const skinNets = allPkKeys.map(pk=>{
-        const ids = m.pairings[pk] ?? [];
-        // Get best raw score from this pairing
-        const raws = ids.map(id => scores[id]?.[hole-1]).filter((v): v is number => v != null);
-        if (!raws.length) return null;
-        const bestRaw = Math.min(...raws);
-        // Apply team-level skin strokes to the best raw score
-        const net = bestRaw - (skinStrokesPerPairing[pk] || 0);
-        return {pk, ids, net};
-      }).filter(Boolean) as {pk:string;ids:string[];net:number}[];
+      const allIndividualScores: { playerId: string; net: number }[] = [];
       
-      let skinWinner=null;
-      if(skinNets.length>=4){
-        const best=Math.min(...skinNets.map(x=>x.net));
-        const w=skinNets.filter(x=>x.net===best);
-        if(w.length===1) skinWinner=w[0];
+      allPkKeys.forEach(pk => {
+        const ids = m.pairings[pk] ?? [];
+        const pairingStrokes = skinStrokesPerPairing[pk] || 0;
+        
+        ids.forEach(playerId => {
+          const raw = scores[playerId]?.[hole-1];
+          if (raw != null) {
+            // For Best Ball skins: individual raw score - pairing-level strokes
+            // (strokes are applied at pairing level, but skins are won individually)
+            const net = raw - pairingStrokes;
+            allIndividualScores.push({ playerId, net });
+          }
+        });
+      });
+      
+      let skinWinner = null;
+      if (allIndividualScores.length >= 4) {
+        const best = Math.min(...allIndividualScores.map(x => x.net));
+        const winners = allIndividualScores.filter(x => x.net === best);
+        // Only award skin if there's a single winner (no ties)
+        if (winners.length === 1) {
+          skinWinner = { pk: '', ids: [winners[0].playerId], net: best };
+        }
       }
       
       return {matchupResults, skinWinner, rank, hd};
@@ -1303,11 +1312,21 @@ function GolfScoringApp() {
         const actualHole = m.startHole + h - 1;
         const globalWinner = calcGlobalSkinsForHole(actualHole, allMatches, allScores, getTeeFunc);
         if (globalWinner && globalWinner.matchId === m.id) {
-          const v = globalWinner.playerIds.length > 0 ? 1 / globalWinner.playerIds.length : 0;
+          // Determine points per player based on format
+          // Team formats (scramble, alternate, greensomes, modifiedscramble): 0.5 per partner
+          // Individual formats (bestball, singles): 1.0 per player
+          const isTeamFormat = ['scramble', 'alternate', 'greensomes', 'modifiedscramble'].includes(m.format);
+          const v = isTeamFormat 
+            ? (globalWinner.playerIds.length > 0 ? 1 / globalWinner.playerIds.length : 0)
+            : 1.0; // Full point for individual formats
           globalWinner.playerIds.forEach(id => { playerSkins[id] = (playerSkins[id] || 0) + v; });
         }
       } else if(res.skinWinner) {
-        const v = res.skinWinner.ids.length > 0 ? 1 / res.skinWinner.ids.length : 0;
+        // Determine points per player based on format
+        const isTeamFormat = ['scramble', 'alternate', 'greensomes', 'modifiedscramble'].includes(m.format);
+        const v = isTeamFormat 
+          ? (res.skinWinner.ids.length > 0 ? 1 / res.skinWinner.ids.length : 0)
+          : 1.0; // Full point for individual formats
         res.skinWinner.ids.forEach(id=>{playerSkins[id]=(playerSkins[id]||0)+v;});
       }
     }
@@ -2847,29 +2866,50 @@ function GolfScoringApp() {
       
       for (let h = 1; h <= maxHoles; h++) {
         const holeHcp = courseTee?.holes?.[h - 1]?.rank ?? h; // Hole handicap ranking
-        const holeNetScores: { key: string; net: number; playerIds: string[] }[] = [];
+        const holeNetScores: { key: string; net: number; playerIds: string[]; isBestBall: boolean }[] = [];
         
         Object.entries(allRawScoresForCourse).forEach(([key, scores]) => {
-          const rawScore = scores[h - 1]; // Arrays are 0-indexed, holes are 1-indexed
-          if (rawScore == null || typeof rawScore !== 'number') return;
-          
           const info = pairingInfo[key];
           if (!info) return;
           
+          const isBestBall = info.format === 'bestball';
+          const isSingles = info.format === 'singles';
+          
           // Calculate strokes this pairing gets on this hole relative to lowest handicap
-          // Same logic as match play: base strokes + extra stroke on hardest holes
           const hcpDiff = info.handicap - minHandicap;
           let strokes = 0;
           if (hcpDiff > 0) {
-            // Base strokes everyone gets on all holes
             const baseStrokes = Math.floor(hcpDiff / 18);
-            // Extra stroke on holes ranked 1 to (hcpDiff % 18)
             const extraStrokeHoles = hcpDiff % 18;
             strokes = baseStrokes + (holeHcp <= extraStrokeHoles ? 1 : 0);
           }
           
-          const netScore = rawScore - strokes;
-          holeNetScores.push({ key, net: netScore, playerIds: info.playerIds });
+          // For Best Ball and Singles: track INDIVIDUAL players
+          // For team formats: track pairings (best score or team score)
+          if (isBestBall || isSingles) {
+            // Each player competes individually
+            info.playerIds.forEach(playerId => {
+              const rawScore = scores[h - 1]; // This is currently the best/team score
+              // We need individual scores, but allRawScoresForCourse stores pairing scores
+              // For now, use the scores from allMatchScores directly
+              const matchId = key.split('__')[0];
+              const individualScores = allMatchScores[matchId];
+              if (!individualScores || !individualScores[playerId]) return;
+              
+              const playerRawScore = individualScores[playerId][h - 1];
+              if (playerRawScore == null || typeof playerRawScore !== 'number') return;
+              
+              const netScore = playerRawScore - strokes;
+              holeNetScores.push({ key: playerId, net: netScore, playerIds: [playerId], isBestBall: true });
+            });
+          } else {
+            // Team formats: use team score
+            const rawScore = scores[h - 1];
+            if (rawScore == null || typeof rawScore !== 'number') return;
+            
+            const netScore = rawScore - strokes;
+            holeNetScores.push({ key, net: netScore, playerIds: info.playerIds, isBestBall: false });
+          }
         });
         
         if (holeNetScores.length === 0) {
@@ -2881,19 +2921,22 @@ function GolfScoringApp() {
         const winners = holeNetScores.filter(s => s.net === minNet);
         
         if (winners.length === 1) {
-          const winnerKey = winners[0].key;
-          const winnerPlayerIds = winners[0].playerIds;
+          const winnerEntry = winners[0];
+          const winnerPlayerIds = winnerEntry.playerIds;
           
-          // Credit EACH player in the winning pairing with a skin
+          // For Best Ball/Singles: award 1.0 point to the individual winner
+          // For team formats: award 0.5 point to each partner
+          const pointsPerPlayer = winnerEntry.isBestBall ? 1.0 : (1.0 / winnerPlayerIds.length);
+          
           winnerPlayerIds.forEach(pid => {
-            skinsByPlayer[pid] = (skinsByPlayer[pid] || 0) + 1;
+            skinsByPlayer[pid] = (skinsByPlayer[pid] || 0) + pointsPerPlayer;
           });
           
           // Get player names for display
           const names = winnerPlayerIds.map(pid => tData.players?.find(p => p.id === pid)?.name || 'Unknown');
           const winnerName = names.join(' & ');
           
-          holeResults.push({ hole: h, winner: winnerKey, winnerName, winnerPlayerIds });
+          holeResults.push({ hole: h, winner: winnerEntry.key, winnerName, winnerPlayerIds });
         } else {
           holeResults.push({ hole: h, winner: null, winnerName: 'Push', winnerPlayerIds: [] });
         }
