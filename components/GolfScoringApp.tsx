@@ -391,7 +391,6 @@ const bestBallStrokes = (m: Match, pairingKey: string, oppPairingKey: string, ra
 };
 
 const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
-  console.log(`      skinsStrokes called: pHcps=`, pHcps, `rank=${rank}`);
   const vals = Object.values(pHcps||{});
   if (!vals.length) return {} as Record<string,number>;
   const min = Math.min(...vals);
@@ -402,9 +401,7 @@ const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
     const baseStrokes = Math.floor(diff / 18);
     const extraStroke = (rank <= (diff % 18)) ? 1 : 0;
     out[k] = baseStrokes + extraStroke;
-    console.log(`        ${k}: hcp=${hcp}, diff=${diff}, base=${baseStrokes}, extra=${extraStroke}, total=${out[k]}`);
   }
-  console.log(`      skinsStrokes result:`, out);
   return out;
 };
 
@@ -427,8 +424,6 @@ const calcGlobalSkinsForHole = (
 ): SkinEntry | null => {
   const allEntries: SkinEntry[] = [];
   
-  console.log(`🏆 Calculating skins for hole ${hole}`);
-  
   for (const m of matches) {
     const tee = getTeeForMatch(m);
     if (!tee) continue;
@@ -439,12 +434,8 @@ const calcGlobalSkinsForHole = (
     const fmt = FORMATS[m.format];
     const isSingles = fmt?.ppp === 1;
     
-    console.log(`  Match ${m.id} (${fmt?.name}):`, { hasScores: Object.keys(scores).length > 0, holeData: hd });
-    
     // Get all pairing keys for this match
     const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
-    
-    console.log(`    Pairings:`, allPkKeys);
     
     for (const pk of allPkKeys) {
       const ids = (m.pairings??{})[pk] ?? [];
@@ -460,12 +451,10 @@ const calcGlobalSkinsForHole = (
         // Scramble/Modified Scramble/Alternate Shot/Greensomes: team score (single score for the pairing)
         const pid = ids[0];
         raw = scores[pid]?.[hole - 1] ?? null;
-        console.log(`      ${pk}: ids=${ids.join(',')}, using ${pid}, raw=${raw}, stroke=${skinSt[pk]||0}, net=${raw !== null ? raw - (skinSt[pk]||0) : 'null'}`);
       } else {
         // Best Ball: best of the pairing's scores
         const playerScores = ids.map(id => scores[id]?.[hole - 1]).filter((v): v is number => v != null);
         if (playerScores.length > 0) raw = Math.min(...playerScores);
-        console.log(`      ${pk}: ids=${ids.join(',')}, scores=[${ids.map(id=>scores[id]?.[hole-1]??'null').join(',')}], raw=${raw}, stroke=${skinSt[pk]||0}, net=${raw !== null ? raw - (skinSt[pk]||0) : 'null'}`);
       }
       
       if (raw == null) continue;
@@ -474,22 +463,14 @@ const calcGlobalSkinsForHole = (
     }
   }
   
-  console.log(`  Total entries: ${allEntries.length}`, allEntries.map(e => `${e.pk}:net${e.net}`).join(', '));
-  
   if (allEntries.length === 0) return null;
   
   // Find the lowest net score
   const best = Math.min(...allEntries.map(e => e.net));
   const winners = allEntries.filter(e => e.net === best);
   
-  console.log(`  Best net: ${best}, Winners: ${winners.length}`, winners.map(w => `${w.pk}:${w.playerIds.join('&')}`).join(', '));
-  
   // Only award skin if there's exactly one winner (no ties)
-  if (winners.length === 1) {
-    console.log(`  ✅ Skin awarded to ${winners[0].pk} with net ${winners[0].net}`);
-    return winners[0];
-  }
-  console.log(`  ❌ No skin awarded (${winners.length === 0 ? 'no scores' : 'tie'})`);
+  if (winners.length === 1) return winners[0];
   return null;
 };
 
@@ -1629,16 +1610,15 @@ function GolfScoringApp() {
   // GLOSSARY SCREEN - Game format explanations and rules (no tData required)
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='glossary') {
-    try {
-      const formatDetails: Record<string, {
-        name: string;
-        overview: string;
-        howToPlay: string[];
-        scoring: string[];
-        handicaps: string[];
-        skins: string[];
-        example: string;
-      }> = {
+    const formatDetails: Record<string, {
+      name: string;
+      overview: string;
+      howToPlay: string[];
+      scoring: string[];
+      handicaps: string[];
+      skins: string[];
+      example: string;
+    }> = {
       bestball: {
         name: 'Best Ball',
         overview: 'Each player plays their own ball throughout the hole. The best NET score from each team counts as the team score for that hole.',
@@ -1994,29 +1974,6 @@ function GolfScoringApp() {
         </div>
       </BG>
     );
-    } catch (error) {
-      console.error('Glossary render error:', error);
-      if (error instanceof Error) {
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-      }
-      return (
-        <BG>
-          <div className="sticky top-0 z-10 p-4 border-b border-white/10" style={{background:'#0D1B2A'}}>
-            <div className="max-w-2xl mx-auto flex items-center gap-3">
-              <button onClick={()=>setScreen(tData?'tournament':'login')} className="text-white/60 hover:text-white">
-                <ChevronLeft className="w-5 h-5"/>
-              </button>
-              <h1 className="font-bebas font-bold text-white text-2xl">Game Format Guide</h1>
-            </div>
-          </div>
-          <div className="p-4 text-center">
-            <div className="text-white/50 mb-4">Error loading glossary. Please try again.</div>
-            <Btn color="blue" onClick={()=>setScreen(tData?'tournament':'login')}>Go Back</Btn>
-          </div>
-        </BG>
-      );
-    }
   }
 
   if (!tData) return (
