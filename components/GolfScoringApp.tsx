@@ -1852,7 +1852,8 @@ function GolfScoringApp() {
                 <ChevronDown className={`w-5 h-5 text-white/40 transition-transform ${selectedFormat === key ? 'rotate-180' : ''}`}/>
               </button>
 
-              <div className={`px-4 pb-4 space-y-4 border-t border-white/10 ${selectedFormat === key ? '' : 'hidden'}`}>
+              {selectedFormat === key && (
+                <div className="px-4 pb-4 space-y-4 border-t border-white/10">
                   {/* Overview */}
                   <div className="pt-4">
                     <div className="text-sm text-white/80 leading-relaxed">
@@ -1943,6 +1944,7 @@ function GolfScoringApp() {
                     </p>
                   </div>
               </div>
+              )}
             </Card>
           ))}
 
