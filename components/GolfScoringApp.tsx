@@ -556,38 +556,31 @@ ScriptWboro.displayName = 'ScriptWboro';
 // Navy: #0A1628 | Royal Blue: #006BB6 | Gold: #C9A227 | White: #F0F4FF
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
-/* ── Reset & Box Model ──────────────────────────────────── */
+/* ── Reset & Box Model ───────────────────────────────────── */
 *, *::before, *::after {
   -webkit-tap-highlight-color: transparent;
   box-sizing: border-box;
 }
 
-/* ── iOS / WebKit Core ──────────────────────────────────── */
+/* ── iOS / WebKit Core ───────────────────────────────────── */
 html {
-  /* Prevent font-size inflation on orientation change */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  /* Smooth momentum scroll for the whole page */
   scroll-behavior: smooth;
 }
 body {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  /* Subpixel antialiasing on iOS/Mac */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Prevent body bounce/overscroll on iOS */
   overscroll-behavior: none;
-  /* Prevent callout menu on long-press */
   -webkit-touch-callout: none;
 }
 
-/* ── Buttons & interactive — no tap delay on iOS ─────────── */
+/* ── Buttons — no tap delay, no text-select on hold ─────── */
 button, a, [role="button"] {
   touch-action: manipulation;
-  /* Prevent text selection on tap-hold */
   -webkit-user-select: none;
   user-select: none;
-  /* Crisp cursor on desktop */
   cursor: pointer;
 }
 
@@ -595,10 +588,8 @@ button, a, [role="button"] {
 input, select, textarea {
   font-size: 16px !important;
   touch-action: manipulation;
-  /* Prevent iOS rounded corners on inputs */
   -webkit-appearance: none;
   appearance: none;
-  border-radius: 0;
 }
 
 /* ── Fonts ───────────────────────────────────────────────── */
@@ -612,39 +603,25 @@ input, select, textarea {
 /* ── Scroll helpers ──────────────────────────────────────── */
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-/* Momentum scroll on iOS for horizontal/vertical scroll containers */
 .scroll-touch {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
 
-/* ── Card styles ─────────────────────────────────────────── */
-.card-dark       { background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.10); }
-.card-dark-accent{ background: rgba(201,162,39,0.10);  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(201,162,39,0.25); }
-.card-blue       { background: rgba(0,107,182,0.20);   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(0,107,182,0.40); }
-.card-red        { background: rgba(200,16,46,0.15);   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(200,16,46,0.35); }
+/* ── Cards — -webkit-backdrop-filter required for Safari ─── */
+.card-dark        { background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.10); }
+.card-dark-accent { background: rgba(201,162,39,0.10);  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(201,162,39,0.25); }
+.card-blue        { background: rgba(0,107,182,0.20);   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(0,107,182,0.40); }
+.card-red         { background: rgba(200,16,46,0.15);   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(200,16,46,0.35); }
 
 /* ── Glow accents ────────────────────────────────────────── */
 .glow-gold { box-shadow: 0 0 40px rgba(201,162,39,0.25), 0 4px 24px rgba(0,0,0,0.5); }
 .glow-blue { box-shadow: 0 0 24px rgba(0,107,182,0.30), 0 2px 12px rgba(0,0,0,0.4); }
-
-/* ── Score tap buttons — larger hit area on mobile ───────── */
-.score-btn { min-width: 44px; min-height: 44px; }
-
-/* ── Sticky headers need -webkit- backdrop on iOS ────────── */
-.sticky-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-}
 `;
 
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 const BG = memo(({children}: {children: React.ReactNode}) => (
-  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)',overscrollBehavior:'none'}}>
-    <style suppressHydrationWarning>{FONTS}</style>
+  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)',overscrollBehavior:'none'}}>    <style suppressHydrationWarning>{FONTS}</style>
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
       {/* Subtle diagonal rule grid */}
       <div className="absolute inset-0" style={{backgroundImage:'repeating-linear-gradient(135deg,rgba(0,107,182,0.04) 0px,rgba(0,107,182,0.04) 1px,transparent 1px,transparent 60px)'}}/>
@@ -799,30 +776,22 @@ const ToastContainer = memo(({ toasts, onDismiss }: {
 ToastContainer.displayName = 'ToastContainer';
 
 // ─── Session Cache (localStorage) ────────────────────────────────────────────
-// Stores up to 3 recent sessions so users can rejoin without re-entering codes.
-// Cleared only on explicit "Forget" — regular logout keeps the session cached.
 const SESSION_KEY = 'wc_sessions_v1';
 interface CachedSession { id: string; passcode: string; role: 'admin'|'player'; name: string; lastSeen: number; }
-
 const readSessions = (): CachedSession[] => {
   if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY) ?? '[]') as CachedSession[]; }
-  catch { return []; }
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) ?? '[]') as CachedSession[]; } catch { return []; }
 };
 const writeSession = (s: CachedSession) => {
   if (typeof window === 'undefined') return;
   try {
     const prev = readSessions().filter(x => !(x.id === s.id && x.role === s.role));
-    const next = [s, ...prev].slice(0, 3); // keep max 3
-    localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+    localStorage.setItem(SESSION_KEY, JSON.stringify([s, ...prev].slice(0, 3)));
   } catch { /* ignore quota errors */ }
 };
 const forgetSession = (id: string, role: string) => {
   if (typeof window === 'undefined') return;
-  try {
-    const next = readSessions().filter(x => !(x.id === id && x.role === role));
-    localStorage.setItem(SESSION_KEY, JSON.stringify(next));
-  } catch { /* ignore */ }
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(readSessions().filter(x => !(x.id === id && x.role === role)))); } catch { /* ignore */ }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -867,10 +836,8 @@ function GolfScoringApp() {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  // ── Load cached sessions on mount ────────────────────────────────────────────
-  useEffect(() => {
-    setCachedSessions(readSessions());
-  }, []);
+  // Load cached sessions on mount (client-side only)
+  useEffect(() => { setCachedSessions(readSessions()); }, []);
   
   const toggleExpanded = useCallback((mid: string) => 
     setExpandedMatches(prev=>({...prev,[mid]:!prev[mid]})),
@@ -1082,14 +1049,7 @@ function GolfScoringApp() {
     if (!asAdmin && passcode!==data.passcode) { setLoginErr('Wrong passcode.'); setLoading(false); return; }
     setTData(data); setRole(asAdmin?'admin':'player');
     setTournId(tournId.toUpperCase().trim());
-    // Cache this session for quick re-login
-    writeSession({
-      id: tournId.toUpperCase().trim(),
-      passcode,
-      role: asAdmin ? 'admin' : 'player',
-      name: data.name ?? 'Warrior Cup',
-      lastSeen: Date.now(),
-    });
+    writeSession({ id: tournId.toUpperCase().trim(), passcode, role: asAdmin?'admin':'player', name: data.name??'Warrior Cup', lastSeen: Date.now() });
     setCachedSessions(readSessions());
     setScreen(asAdmin?'admin':'tournament'); setLoading(false);
   };
@@ -1496,23 +1456,6 @@ function GolfScoringApp() {
     
     const ms=calcMatchStatus(m, localScores, tee, allMatches, combinedAllScores, getTeeForMatch);
 
-    const playerStatsRecord: Record<string,{pointsContributed:number;netUnderPar:number;matchWon:boolean}> = {};
-    allIds.forEach(id => {
-      playerStatsRecord[id] = {
-        pointsContributed: playerPointsContrib[id] || 0,
-        netUnderPar: playerNetUnderPar[id] || 0,
-        matchWon: winnerTeam === (t1Ids.includes(id) ? 'team1' : 'team2'),
-      };
-    });
-
-    const result: MatchResult={
-      matchId:m.id,format:m.format,holes:m.holes,startHole:m.startHole,
-      teamPoints:matchupPts,totalPoints:calcMatchPts(m),
-      team1HolesWon:ms.t1Holes,team2HolesWon:ms.t2Holes,
-      leader:ms.leader,playerSkins:ms.playerSkins,completedAt:new Date().toISOString(),
-      playerStats:playerStatsRecord,
-    };
-    
     // CRITICAL: Save scores first, then mark match complete
     // This order ensures scores are saved even if the tournament update fails
     try {
@@ -1587,12 +1530,31 @@ function GolfScoringApp() {
       }
     }
 
+    // Build per-player stat deltas stored in result — re-edits recalculate from scratch, no double-counting
+    const playerStatsRecord: Record<string,{pointsContributed:number;netUnderPar:number;matchWon:boolean}> = {};
+    allIds.forEach(id => {
+      playerStatsRecord[id] = {
+        pointsContributed: playerPointsContrib[id] || 0,
+        netUnderPar: playerNetUnderPar[id] || 0,
+        matchWon: winnerTeam === (t1Ids.includes(id) ? 'team1' : 'team2'),
+      };
+    });
+
+    const result: MatchResult={
+      matchId:m.id,format:m.format,holes:m.holes,startHole:m.startHole,
+      teamPoints:matchupPts,totalPoints:calcMatchPts(m),
+      team1HolesWon:ms.t1Holes,team2HolesWon:ms.t2Holes,
+      leader:ms.leader,playerSkins:ms.playerSkins,completedAt:new Date().toISOString(),
+      playerStats:playerStatsRecord,
+    };
+
     // CRITICAL: Use transaction to prevent race conditions when marking match complete
     try {
       await updateTournament(d=>({
         ...d,
         matches:(d.matches||[]).map(mx=>mx.id===activeMatchId?{...mx,completed:true}:mx),
         matchResults:[...(d.matchResults||[]).filter(r=>r.matchId!==activeMatchId),result],
+        // Recalculate ALL player stats from scratch — prevents double-counting on re-edit
         players:(()=>{
           const allResults=[...(d.matchResults||[]).filter(r=>r.matchId!==activeMatchId),result];
           const hasAllStats=allResults.every(r=>r.playerStats!=null);
@@ -1600,9 +1562,9 @@ function GolfScoringApp() {
             let totalPts=0,totalNet=0,totalSkins=0,mWon=0,mPlayed=0;
             allResults.forEach(r=>{
               totalSkins+=r.playerSkins?.[p.id]||0;
-              if(r.playerStats){ const ps=r.playerStats[p.id]; if(ps){ mPlayed++; if(ps.matchWon)mWon++; totalPts+=ps.pointsContributed||0; totalNet+=ps.netUnderPar||0; } }
+              if(r.playerStats){const ps=r.playerStats[p.id];if(ps){mPlayed++;if(ps.matchWon)mWon++;totalPts+=ps.pointsContributed||0;totalNet+=ps.netUnderPar||0;}}
             });
-            if(!hasAllStats){ const e=p.stats||{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}; return{...p,stats:{...e,skinsWon:totalSkins}}; }
+            if(!hasAllStats){const e=p.stats||{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0};return{...p,stats:{...e,skinsWon:totalSkins}};}
             return{...p,stats:{matchesPlayed:mPlayed,matchesWon:mWon,pointsContributed:totalPts,netUnderPar:totalNet,skinsWon:totalSkins}};
           });
         })(),
@@ -1624,28 +1586,16 @@ function GolfScoringApp() {
 
   const logout = () => { unsubRef.current?.(); setRole(null);setTData(null);setTournId('');setPasscode('');setEditingScores(false);setScreen('login'); };
 
-  // Quick-rejoin from cached session
   const resumeSession = async (s: CachedSession) => {
     setResumeLoading(`${s.id}:${s.role}`);
     const data = await loadTournament(s.id).catch(()=>null);
     setResumeLoading(null);
-    if (!data) {
-      showToast('Tournament not found — it may have been deleted.', 'error');
-      forgetSession(s.id, s.role);
-      setCachedSessions(readSessions());
-      return;
-    }
+    if (!data) { showToast('Tournament not found — it may have been deleted.', 'error'); forgetSession(s.id, s.role); setCachedSessions(readSessions()); return; }
     const pc = s.role === 'admin' ? data.adminPasscode : data.passcode;
-    if (pc !== s.passcode) {
-      showToast('Passcode changed — please log in manually.', 'error');
-      forgetSession(s.id, s.role);
-      setCachedSessions(readSessions());
-      return;
-    }
+    if (pc !== s.passcode) { showToast('Passcode changed — please log in manually.', 'error'); forgetSession(s.id, s.role); setCachedSessions(readSessions()); return; }
     writeSession({ ...s, name: data.name ?? s.name, lastSeen: Date.now() });
     setCachedSessions(readSessions());
-    setTournId(s.id); setPasscode(s.passcode);
-    setTData(data); setRole(s.role);
+    setTournId(s.id); setPasscode(s.passcode); setTData(data); setRole(s.role);
     setScreen(s.role === 'admin' ? 'admin' : 'tournament');
   };
 
@@ -1728,7 +1678,7 @@ function GolfScoringApp() {
 
         <div className="w-full max-w-sm space-y-3">
 
-          {/* ── Quick Rejoin (cached sessions) ──────────────────────── */}
+          {/* ── Quick Rejoin (cached sessions) ── */}
           {cachedSessions.length > 0 && (
             <div className="space-y-2">
               <div className="text-xs font-bold text-white/30 tracking-widest uppercase text-center">Recent</div>
@@ -1737,6 +1687,7 @@ function GolfScoringApp() {
                 const isLoading = resumeLoading === key;
                 const ago = (() => {
                   const mins = Math.floor((Date.now() - s.lastSeen) / 60000);
+                  if (mins < 2) return 'just now';
                   if (mins < 60) return `${mins}m ago`;
                   const hrs = Math.floor(mins / 60);
                   if (hrs < 24) return `${hrs}h ago`;
@@ -1745,12 +1696,8 @@ function GolfScoringApp() {
                 return (
                   <div key={key} className="flex items-center gap-2 p-3 rounded-2xl border border-white/10"
                     style={{background:'rgba(255,255,255,0.05)'}}>
-                    <button
-                      onClick={() => resumeSession(s)}
-                      disabled={isLoading || !!resumeLoading}
-                      className="flex-1 flex items-center gap-3 min-w-0 text-left"
-                      style={{touchAction:'manipulation'}}
-                    >
+                    <button onClick={() => resumeSession(s)} disabled={isLoading || !!resumeLoading}
+                      className="flex-1 flex items-center gap-3 min-w-0 text-left" style={{touchAction:'manipulation'}}>
                       <div className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${s.role==='admin'?'bg-yellow-900/60 text-yellow-300':'bg-blue-900/60 text-blue-300'}`}>
                         {s.role==='admin'?'A':'P'}
                       </div>
@@ -1758,21 +1705,13 @@ function GolfScoringApp() {
                         <div className="text-white font-bold text-sm truncate">{s.name}</div>
                         <div className="text-white/30 text-xs">{s.id} · {s.role} · {ago}</div>
                       </div>
-                      {isLoading
-                        ? <Spinner size={18} color="gold"/>
-                        : <span className="text-[#C9A227] text-xs font-bold shrink-0">Resume →</span>
-                      }
+                      {isLoading ? <Spinner size={18} color="gold"/> : <span className="text-[#C9A227] text-xs font-bold shrink-0">Resume →</span>}
                     </button>
-                    <button
-                      onClick={() => { forgetSession(s.id, s.role); setCachedSessions(readSessions()); }}
-                      className="shrink-0 p-2 text-white/20 hover:text-red-400 rounded-lg"
-                      title="Forget this session"
-                      style={{touchAction:'manipulation'}}
-                    >✕</button>
+                    <button onClick={() => { forgetSession(s.id, s.role); setCachedSessions(readSessions()); }}
+                      className="shrink-0 p-2 text-white/20 hover:text-red-400 rounded-lg" style={{touchAction:'manipulation'}}>✕</button>
                   </div>
                 );
               })}
-              {/* Divider */}
               <div className="flex items-center gap-3 px-1 pt-1">
                 <div className="h-px flex-1 bg-white/8"/>
                 <span className="text-white/20 text-xs tracking-widest">OR JOIN MANUALLY</span>
@@ -1781,20 +1720,13 @@ function GolfScoringApp() {
             </div>
           )}
 
-          {/* ── Manual Login Form ────────────────────────────────────── */}
+          {/* ── Manual Login Form ── */}
           <div className="rounded-2xl p-5 space-y-4 card-dark glow-blue">
-            <Inp label="Tournament ID" value={tournId}
-              onChange={v=>setTournId(v.toUpperCase())}
-              placeholder="e.g. ABC123"
-              autoCapitalize="characters"
-              autoComplete="off"
-              inputMode="text"
+            <Inp label="Tournament ID" value={tournId} onChange={v=>setTournId(v.toUpperCase())} placeholder="e.g. ABC123"
+              autoCapitalize="characters" autoComplete="off" inputMode="text"
               onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
-            <Inp label="Passcode" value={passcode}
-              onChange={setPasscode}
-              placeholder="Enter passcode"
-              autoCapitalize="none"
-              autoComplete="off"
+            <Inp label="Passcode" value={passcode} onChange={setPasscode} placeholder="Enter passcode"
+              autoCapitalize="none" autoComplete="off"
               onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
             {loginErr && (
               <div className="text-sm text-red-300 font-semibold rounded-xl p-3 border border-red-700/40" style={{background:'rgba(200,16,46,0.15)'}}>
@@ -1811,7 +1743,6 @@ function GolfScoringApp() {
             </div>
           </div>
 
-          {/* Divider */}
           <div className="flex items-center gap-3 px-2">
             <div className="h-px flex-1 bg-white/10"/>
             <span className="text-white/25 text-xs tracking-widest">OR</span>
