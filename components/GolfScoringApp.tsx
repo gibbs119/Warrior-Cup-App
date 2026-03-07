@@ -32,6 +32,7 @@ interface Tournament {
   courses: Course[]; activeCourseId: string; activeTeeId: string;
   teamNames: Record<string,string>; players: Player[];
   teams: Record<string,string[]>; matches: Match[]; matchResults: MatchResult[];
+  skinsPots?: Record<string,number>;
   createdAt: string;
 }
 
@@ -555,73 +556,27 @@ ScriptWboro.displayName = 'ScriptWboro';
 // ─── Theme: Whitesboro Warriors — Navy / Royal Blue / Gold ───────────────────
 // Navy: #0A1628 | Royal Blue: #006BB6 | Gold: #C9A227 | White: #F0F4FF
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
-/* ── Reset & Box Model ───────────────────────────────────── */
-*, *::before, *::after {
-  -webkit-tap-highlight-color: transparent;
-  box-sizing: border-box;
-}
-
-/* ── iOS / WebKit Core ───────────────────────────────────── */
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-  scroll-behavior: smooth;
-}
-body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior: none;
-  -webkit-touch-callout: none;
-}
-
-/* ── Buttons — no tap delay, no text-select on hold ─────── */
-button, a, [role="button"] {
-  touch-action: manipulation;
-  -webkit-user-select: none;
-  user-select: none;
-  cursor: pointer;
-}
-
-/* ── Inputs — 16px prevents iOS auto-zoom ───────────────── */
-input, select, textarea {
-  font-size: 16px !important;
-  touch-action: manipulation;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-/* ── Fonts ───────────────────────────────────────────────── */
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, sans-serif; }
 .font-bebas { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.06em; }
 .font-script { font-family: 'Brush Script MT', 'Lucida Handwriting', cursive; }
-
-/* ── Safe areas (notch / home bar) ──────────────────────── */
 .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px); }
-.safe-top    { padding-top:    max(env(safe-area-inset-top, 0px), 0px); }
-
-/* ── Scroll helpers ──────────────────────────────────────── */
+.safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
+input, select, textarea { font-size: 16px !important; }
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-.scroll-touch {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-/* ── Cards — -webkit-backdrop-filter required for Safari ─── */
-.card-dark        { background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.10); }
-.card-dark-accent { background: rgba(201,162,39,0.10);  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(201,162,39,0.25); }
-.card-blue        { background: rgba(0,107,182,0.20);   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(0,107,182,0.40); }
-.card-red         { background: rgba(200,16,46,0.15);   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(200,16,46,0.35); }
-
-/* ── Glow accents ────────────────────────────────────────── */
+.card-dark { background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.10); }
+.card-dark-accent { background: rgba(201,162,39,0.10); backdrop-filter: blur(12px); border: 1px solid rgba(201,162,39,0.25); }
+.card-blue { background: rgba(0,107,182,0.20); backdrop-filter: blur(12px); border: 1px solid rgba(0,107,182,0.40); }
+.card-red  { background: rgba(200,16,46,0.15);  backdrop-filter: blur(12px); border: 1px solid rgba(200,16,46,0.35); }
 .glow-gold { box-shadow: 0 0 40px rgba(201,162,39,0.25), 0 4px 24px rgba(0,0,0,0.5); }
 .glow-blue { box-shadow: 0 0 24px rgba(0,107,182,0.30), 0 2px 12px rgba(0,0,0,0.4); }
 `;
 
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 const BG = memo(({children}: {children: React.ReactNode}) => (
-  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)',overscrollBehavior:'none'}}>    <style suppressHydrationWarning>{FONTS}</style>
+  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
+    <style suppressHydrationWarning>{FONTS}</style>
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
       {/* Subtle diagonal rule grid */}
       <div className="absolute inset-0" style={{backgroundImage:'repeating-linear-gradient(135deg,rgba(0,107,182,0.04) 0px,rgba(0,107,182,0.04) 1px,transparent 1px,transparent 60px)'}}/>
@@ -673,16 +628,13 @@ const Btn = memo(({onClick, children, color='gold', className='', disabled=false
 });
 Btn.displayName = 'Btn';
 
-const Inp = memo(({label, value, onChange, type='text', placeholder='', className='', onKeyDown, autoCapitalize, autoComplete, inputMode}: {
+const Inp = memo(({label, value, onChange, type='text', placeholder='', className='', onKeyDown}: {
   label?: string; value: string|number; onChange: (v:string)=>void;
   type?: string; placeholder?: string; className?: string; onKeyDown?: (e:React.KeyboardEvent)=>void;
-  autoCapitalize?: string; autoComplete?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
 }) => (
   <div className={className}>
     {label && <label className="block text-xs font-semibold text-white/50 mb-1.5 tracking-widest uppercase">{label}</label>}
     <input type={type} value={value??''} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onKeyDown={onKeyDown}
-      autoCapitalize={autoCapitalize} autoComplete={autoComplete ?? 'off'} autoCorrect="off" spellCheck={false}
-      inputMode={inputMode}
       className="w-full px-4 py-3 rounded-xl outline-none text-white placeholder-white/25 transition-all border border-white/10 focus:border-[#006BB6] focus:ring-2 focus:ring-[#006BB6]/30"
       style={{background:'rgba(255,255,255,0.06)'}}/>
   </div>
@@ -775,24 +727,111 @@ const ToastContainer = memo(({ toasts, onDismiss }: {
 });
 ToastContainer.displayName = 'ToastContainer';
 
-// ─── Session Cache (localStorage) ────────────────────────────────────────────
-const SESSION_KEY = 'wc_sessions_v1';
-interface CachedSession { id: string; passcode: string; role: 'admin'|'player'; name: string; lastSeen: number; }
-const readSessions = (): CachedSession[] => {
-  if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY) ?? '[]') as CachedSession[]; } catch { return []; }
-};
-const writeSession = (s: CachedSession) => {
-  if (typeof window === 'undefined') return;
-  try {
-    const prev = readSessions().filter(x => !(x.id === s.id && x.role === s.role));
-    localStorage.setItem(SESSION_KEY, JSON.stringify([s, ...prev].slice(0, 3)));
-  } catch { /* ignore quota errors */ }
-};
-const forgetSession = (id: string, role: string) => {
-  if (typeof window === 'undefined') return;
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify(readSessions().filter(x => !(x.id === id && x.role === role)))); } catch { /* ignore */ }
-};
+// ─── SkinsCard — one card per course on the Skins screen ─────────────────────
+// Must be a proper component so useState (local pot input) follows Rules of Hooks
+type SkinHoleResult = { hole: number; entry: { matchId: string; pk: string; playerIds: string[]; net: number } | null };
+type SkinPlayerRow  = { id: string; name: string; skins: number };
+interface SkinsCardProps {
+  course: { id: string; name: string };
+  holeResults: SkinHoleResult[];
+  playerSummary: SkinPlayerRow[];
+  totalSkins: number; potUnits: number; unitsPerSkin: number;
+  completedMatches: number; totalMatches: number;
+  players: { id: string; name: string }[];
+  savePot: (courseId: string, val: number) => void;
+}
+const SkinsCard = memo(({ course, holeResults, playerSummary, totalSkins, potUnits, unitsPerSkin,
+                           completedMatches, totalMatches, players, savePot }: SkinsCardProps) => {
+  const [potInput, setPotInput] = useState(potUnits > 0 ? String(potUnits) : '');
+  // Keep local input in sync when Firebase value updates from another device
+  useEffect(() => { setPotInput(potUnits > 0 ? String(potUnits) : ''); }, [potUnits]);
+
+  return (
+    <Card className="p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-bebas font-bold text-white text-xl">{course.name}</h2>
+          <div className="text-xs text-white/40">
+            {completedMatches}/{totalMatches} matches completed · {totalSkins} skin{totalSkins !== 1 ? 's' : ''} won
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-white/40 mb-1">Pot (units)</div>
+          <input type="number" inputMode="decimal" placeholder="0"
+            value={potInput}
+            onChange={e => setPotInput(e.target.value)}
+            onBlur={e => savePot(course.id, parseFloat(e.target.value) || 0)}
+            className="w-20 px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white text-center text-sm focus:outline-none focus:border-[#C9A227]"
+          />
+        </div>
+      </div>
+
+      {completedMatches === 0 && (
+        <div className="p-4 rounded-xl bg-white/5 text-center mb-4">
+          <div className="text-white/40 text-sm">No completed matches yet</div>
+          <div className="text-white/25 text-xs mt-1">Skins will appear once matches are scored</div>
+        </div>
+      )}
+
+      {potUnits > 0 && totalSkins > 0 && (
+        <div className="mb-4 p-3 rounded-xl bg-[#C9A227]/10 border border-[#C9A227]/30 flex items-center justify-between">
+          <span className="text-[#C9A227] text-sm font-medium">Units per Skin</span>
+          <span className="font-bebas font-bold text-[#C9A227] text-xl">{unitsPerSkin.toFixed(2)}</span>
+        </div>
+      )}
+
+      {playerSummary.length > 0 && (
+        <div className="mb-4">
+          <div className="text-xs text-white/40 mb-2 font-medium uppercase tracking-wider">Payouts</div>
+          <div className="space-y-2">
+            {playerSummary.map(({ id, name, skins }) => (
+              <div key={id} className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
+                <div className="flex items-center gap-2">
+                  <span className="text-yellow-400 text-lg">🏆</span>
+                  <span className="text-white text-sm font-bold">{name}</span>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-white/60 font-medium">{skins % 1 === 0 ? skins : skins.toFixed(1)} skin{skins !== 1 ? 's' : ''}</span>
+                  {potUnits > 0 && <span className="text-emerald-400 font-bold">{(skins * unitsPerSkin).toFixed(2)} units</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {completedMatches > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-xs text-white/40 hover:text-white/60 py-2 flex items-center gap-1" style={{touchAction:'manipulation'}}>
+            <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform"/>
+            Hole-by-hole breakdown
+          </summary>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {holeResults.map(({ hole, entry }) => {
+              const names = entry
+                ? entry.playerIds.map(id => players.find(p => p.id === id)?.name ?? id).join(' & ')
+                : null;
+              return (
+                <div key={hole}
+                  className={`p-2 rounded-xl text-center text-xs border ${entry ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-white/5 border-white/10'}`}>
+                  <div className="text-white/40 mb-0.5 font-medium">Hole {hole}</div>
+                  <div className={`font-bold truncate ${entry ? 'text-yellow-300' : 'text-white/20'}`}>
+                    {entry ? names : 'Push'}
+                  </div>
+                  {entry && potUnits > 0 && unitsPerSkin > 0 && (
+                    <div className="text-emerald-400 text-xs mt-0.5">{unitsPerSkin.toFixed(1)}u</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      )}
+    </Card>
+  );
+});
+SkinsCard.displayName = 'SkinsCard';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
@@ -813,13 +852,10 @@ function GolfScoringApp() {
   const [viewingMatchId, setViewingMatchId]   = useState<string|null>(null);
   const [editingScores, setEditingScores]     = useState(false);
   const [expandedMatches, setExpandedMatches] = useState<Record<string,boolean>>({});
-  const [skinsPots, setSkinsPots] = useState<Record<string,number>>({});
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
   const [matchLoading, setMatchLoading] = useState(false);
   const [scoringLoading, setScoringLoading] = useState(false);
   const [enteringScores, setEnteringScores] = useState(false);
-  const [cachedSessions, setCachedSessions] = useState<CachedSession[]>([]);
-  const [resumeLoading, setResumeLoading] = useState<string|null>(null);
   
   // ── Toast Notifications ──────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<Array<{id: string; message: string; type: 'success' | 'error' | 'info'}>>([]);
@@ -835,9 +871,6 @@ function GolfScoringApp() {
   const dismissToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
-
-  // Load cached sessions on mount (client-side only)
-  useEffect(() => { setCachedSessions(readSessions()); }, []);
   
   const toggleExpanded = useCallback((mid: string) => 
     setExpandedMatches(prev=>({...prev,[mid]:!prev[mid]})),
@@ -1014,8 +1047,6 @@ function GolfScoringApp() {
         matches:[], matchResults:[], createdAt:new Date().toISOString(),
       };
       await saveTournament(data, id);
-      writeSession({ id, passcode: adminPc, role: 'admin', name: data.name, lastSeen: Date.now() });
-      setCachedSessions(readSessions());
       setTournId(id); setTData(data); setPasscode(adminPc); setRole('admin'); setScreen('admin');
     } catch (err) {
       console.error('Failed to create tournament:', err);
@@ -1049,8 +1080,6 @@ function GolfScoringApp() {
     if (!asAdmin && passcode!==data.passcode) { setLoginErr('Wrong passcode.'); setLoading(false); return; }
     setTData(data); setRole(asAdmin?'admin':'player');
     setTournId(tournId.toUpperCase().trim());
-    writeSession({ id: tournId.toUpperCase().trim(), passcode, role: asAdmin?'admin':'player', name: data.name??'Warrior Cup', lastSeen: Date.now() });
-    setCachedSessions(readSessions());
     setScreen(asAdmin?'admin':'tournament'); setLoading(false);
   };
 
@@ -1456,8 +1485,7 @@ function GolfScoringApp() {
     
     const ms=calcMatchStatus(m, localScores, tee, allMatches, combinedAllScores, getTeeForMatch);
 
-    // CRITICAL: Save scores first, then mark match complete
-    // This order ensures scores are saved even if the tournament update fails
+    // Save scores first — ensures scores persist even if tournament update fails
     try {
       await saveMatchScores(activeMatchId!,localScores);
     } catch (err) {
@@ -1530,7 +1558,7 @@ function GolfScoringApp() {
       }
     }
 
-    // Build per-player stat deltas stored in result — re-edits recalculate from scratch, no double-counting
+    // playerStatsRecord declared AFTER allIds — avoids "used before declaration" TS error
     const playerStatsRecord: Record<string,{pointsContributed:number;netUnderPar:number;matchWon:boolean}> = {};
     allIds.forEach(id => {
       playerStatsRecord[id] = {
@@ -1548,13 +1576,13 @@ function GolfScoringApp() {
       playerStats:playerStatsRecord,
     };
 
-    // CRITICAL: Use transaction to prevent race conditions when marking match complete
+    // Transaction prevents race conditions when multiple devices submit simultaneously
     try {
       await updateTournament(d=>({
         ...d,
         matches:(d.matches||[]).map(mx=>mx.id===activeMatchId?{...mx,completed:true}:mx),
         matchResults:[...(d.matchResults||[]).filter(r=>r.matchId!==activeMatchId),result],
-        // Recalculate ALL player stats from scratch — prevents double-counting on re-edit
+        // Recalculate ALL player stats from stored per-match deltas — no double-counting on re-edit
         players:(()=>{
           const allResults=[...(d.matchResults||[]).filter(r=>r.matchId!==activeMatchId),result];
           const hasAllStats=allResults.every(r=>r.playerStats!=null);
@@ -1585,19 +1613,6 @@ function GolfScoringApp() {
   };
 
   const logout = () => { unsubRef.current?.(); setRole(null);setTData(null);setTournId('');setPasscode('');setEditingScores(false);setScreen('login'); };
-
-  const resumeSession = async (s: CachedSession) => {
-    setResumeLoading(`${s.id}:${s.role}`);
-    const data = await loadTournament(s.id).catch(()=>null);
-    setResumeLoading(null);
-    if (!data) { showToast('Tournament not found — it may have been deleted.', 'error'); forgetSession(s.id, s.role); setCachedSessions(readSessions()); return; }
-    const pc = s.role === 'admin' ? data.adminPasscode : data.passcode;
-    if (pc !== s.passcode) { showToast('Passcode changed — please log in manually.', 'error'); forgetSession(s.id, s.role); setCachedSessions(readSessions()); return; }
-    writeSession({ ...s, name: data.name ?? s.name, lastSeen: Date.now() });
-    setCachedSessions(readSessions());
-    setTournId(s.id); setPasscode(s.passcode); setTData(data); setRole(s.role);
-    setScreen(s.role === 'admin' ? 'admin' : 'tournament');
-  };
 
   const tee=getTee();
   const t1pts=teamPoints('team1');
@@ -1655,6 +1670,7 @@ function GolfScoringApp() {
       <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5 safe-top safe-bottom">
         {/* Hero Header */}
         <div className="text-center mb-8">
+          {/* Logo with gold glow ring */}
           <div className="flex justify-center mb-5">
             <div className="relative">
               <div className="absolute inset-0 rounded-full blur-2xl opacity-50" style={{background:'radial-gradient(circle,#C9A227,transparent 70%)'}}/>
@@ -1665,69 +1681,27 @@ function GolfScoringApp() {
               </div>
             </div>
           </div>
+
+          {/* WARRIOR CUP */}
           <h1 className="font-bebas text-white mb-1" style={{fontSize:'clamp(2.8rem,10vw,4.2rem)',lineHeight:'0.9',letterSpacing:'0.08em',textShadow:'0 2px 20px rgba(0,0,0,0.5)'}}>
             WARRIOR CUP
           </h1>
+
+          {/* Decorative script W'boro */}
           <div className="flex items-center justify-center gap-3 my-2">
             <div className="h-px flex-1 max-w-[60px]" style={{background:'linear-gradient(90deg,transparent,rgba(201,162,39,0.6))'}}/>
             <ScriptWboro className="text-[#C9A227] text-2xl"/>
             <div className="h-px flex-1 max-w-[60px]" style={{background:'linear-gradient(270deg,transparent,rgba(201,162,39,0.6))'}}/>
           </div>
+
           <div className="text-white/40 text-xs tracking-[0.3em] uppercase font-medium">Ryder Cup Style Golf</div>
         </div>
 
         <div className="w-full max-w-sm space-y-3">
-
-          {/* ── Quick Rejoin (cached sessions) ── */}
-          {cachedSessions.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-xs font-bold text-white/30 tracking-widest uppercase text-center">Recent</div>
-              {cachedSessions.map(s => {
-                const key = `${s.id}:${s.role}`;
-                const isLoading = resumeLoading === key;
-                const ago = (() => {
-                  const mins = Math.floor((Date.now() - s.lastSeen) / 60000);
-                  if (mins < 2) return 'just now';
-                  if (mins < 60) return `${mins}m ago`;
-                  const hrs = Math.floor(mins / 60);
-                  if (hrs < 24) return `${hrs}h ago`;
-                  return `${Math.floor(hrs/24)}d ago`;
-                })();
-                return (
-                  <div key={key} className="flex items-center gap-2 p-3 rounded-2xl border border-white/10"
-                    style={{background:'rgba(255,255,255,0.05)'}}>
-                    <button onClick={() => resumeSession(s)} disabled={isLoading || !!resumeLoading}
-                      className="flex-1 flex items-center gap-3 min-w-0 text-left" style={{touchAction:'manipulation'}}>
-                      <div className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${s.role==='admin'?'bg-yellow-900/60 text-yellow-300':'bg-blue-900/60 text-blue-300'}`}>
-                        {s.role==='admin'?'A':'P'}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-white font-bold text-sm truncate">{s.name}</div>
-                        <div className="text-white/30 text-xs">{s.id} · {s.role} · {ago}</div>
-                      </div>
-                      {isLoading ? <Spinner size={18} color="gold"/> : <span className="text-[#C9A227] text-xs font-bold shrink-0">Resume →</span>}
-                    </button>
-                    <button onClick={() => { forgetSession(s.id, s.role); setCachedSessions(readSessions()); }}
-                      className="shrink-0 p-2 text-white/20 hover:text-red-400 rounded-lg" style={{touchAction:'manipulation'}}>✕</button>
-                  </div>
-                );
-              })}
-              <div className="flex items-center gap-3 px-1 pt-1">
-                <div className="h-px flex-1 bg-white/8"/>
-                <span className="text-white/20 text-xs tracking-widest">OR JOIN MANUALLY</span>
-                <div className="h-px flex-1 bg-white/8"/>
-              </div>
-            </div>
-          )}
-
-          {/* ── Manual Login Form ── */}
+          {/* Join Form */}
           <div className="rounded-2xl p-5 space-y-4 card-dark glow-blue">
-            <Inp label="Tournament ID" value={tournId} onChange={v=>setTournId(v.toUpperCase())} placeholder="e.g. ABC123"
-              autoCapitalize="characters" autoComplete="off" inputMode="text"
-              onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
-            <Inp label="Passcode" value={passcode} onChange={setPasscode} placeholder="Enter passcode"
-              autoCapitalize="none" autoComplete="off"
-              onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
+            <Inp label="Tournament ID" value={tournId} onChange={v=>setTournId(v.toUpperCase())} placeholder="e.g. ABC123" onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
+            <Inp label="Passcode" value={passcode} onChange={setPasscode} placeholder="Enter passcode" onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
             {loginErr && (
               <div className="text-sm text-red-300 font-semibold rounded-xl p-3 border border-red-700/40" style={{background:'rgba(200,16,46,0.15)'}}>
                 ⚠ {loginErr}
@@ -1743,16 +1717,25 @@ function GolfScoringApp() {
             </div>
           </div>
 
+          {/* Divider */}
           <div className="flex items-center gap-3 px-2">
             <div className="h-px flex-1 bg-white/10"/>
             <span className="text-white/25 text-xs tracking-widest">OR</span>
             <div className="h-px flex-1 bg-white/10"/>
           </div>
 
+          {/* Create New */}
           <Btn color="gold" onClick={createTournament} disabled={loading} loading={loading} className="w-full flex items-center justify-center gap-2 py-4">
             <Trophy className="w-5 h-5"/>
             <span className="font-bebas text-xl tracking-wider">Create Warrior Cup</span>
           </Btn>
+
+          {/* Game Format Guide - Temporarily disabled */}
+          {/* <Btn color="ghost" onClick={()=>setScreen('glossary')} className="w-full flex items-center justify-center gap-2">
+            <BookOpen className="w-4 h-4"/>
+            <span>Game Format Guide</span>
+          </Btn> */}
+
 
           <div className="text-center text-white/20 text-xs pt-1 tracking-[0.4em] font-bebas">GO BLUE</div>
         </div>
@@ -2667,7 +2650,7 @@ function GolfScoringApp() {
           </div>
 
           {/* Hole Navigator */}
-          <div className="flex gap-1.5 overflow-x-auto px-4 pb-3 scrollbar-hide scroll-touch">
+          <div className="flex gap-1.5 overflow-x-auto px-4 pb-3 scrollbar-hide">
             {Array.from({length:m.holes},(_,i)=>i+1).map(mh=>{
               const ah=mh+(m.startHole-1);
               const hd2=matchTee?.holes.find(h=>h.h===ah);
@@ -2921,322 +2904,119 @@ function GolfScoringApp() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // SKINS SCREEN - Per-course skins breakdown with pot calculation
+  // SKINS SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='skins') {
-    if (!tData) {
-      return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
-    }
-    const courses = tData.courses ?? [];
-    const matches = tData.matches ?? [];
-    const matchResults = tData.matchResults ?? [];
-    
-    // Expensive skins calculation for each course
+    if (!tData) return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+
+    const courses    = tData.courses ?? [];
+    const allMatches = tData.matches ?? [];
+    const completedIds = new Set((tData.matchResults ?? []).map(r => r.matchId));
+    // skinsPots lives in Firebase so every device sees the same values
+    const skinsPots  = tData.skinsPots ?? {};
+
+    // Per-course data — uses the same calcGlobalSkinsForHole as the scoring screen
     const courseSkinsData = courses.map(course => {
-      // Find all matches played on this course
-      const courseMatches = matches.filter(m => m.courseId === course.id);
-      const completedMatchIds = matchResults.map(r => r.matchId);
-      const completedCourseMatches = courseMatches.filter(m => completedMatchIds.includes(m.id));
-      
-      // Get a tee for hole handicap info - use first completed match's tee or default to first tee
-      const sampleMatch = completedCourseMatches[0];
-      const courseTee = sampleMatch ? getTeeForMatch(sampleMatch) : course.tees[0];
-      
-      // Get all match results for this course
-      const courseResults = matchResults.filter(r => courseMatches.some(m => m.id === r.matchId));
-      
-      // Collect all RAW scores from allMatchScores for matches on this course
-      // Note: allMatchScores stores raw scores as (number|null)[] arrays, indexed from 0
-      const allRawScoresForCourse: Record<string, (number|null)[]> = {};
-      const completedMatchIdsOnCourse = courseResults.map(r => r.matchId);
-      Object.entries(allMatchScores).forEach(([matchId, matchScores]) => {
-        if (!completedMatchIdsOnCourse.includes(matchId)) return;
-        Object.entries(matchScores).forEach(([pairingKey, holeScores]) => {
-          const globalKey = `${matchId}__${pairingKey}`;
-          allRawScoresForCourse[globalKey] = holeScores as (number|null)[];
-        });
+      // ── fix: matches without courseId use the tournament's activeCourse ──────
+      const courseMatches = allMatches.filter(m =>
+        (m.courseId ?? tData.activeCourseId) === course.id
+      );
+      const completedCourseMatches = courseMatches.filter(m => completedIds.has(m.id));
+
+      // Derive which hole numbers were actually played
+      const holesPlayed = new Set<number>();
+      completedCourseMatches.forEach(m => {
+        for (let i = 0; i < m.holes; i++) holesPlayed.add(m.startHole + i);
       });
-      
-      // Calculate skins per hole across all matches on this course
-      // IMPORTANT: Skins are tracked per INDIVIDUAL player (pairings change between formats)
-      const holeResults: { hole: number; winner: string | null; winnerName: string; winnerPlayerIds: string[] }[] = [];
-      const skinsByPlayer: Record<string, number> = {}; // Track by individual player ID
-      
-      // Determine holes range for this course (1-9 or 1-18 depending on matches)
-      const holesFromMatches = completedCourseMatches.map(m => m.holes);
-      const maxHoles = holesFromMatches.length > 0 ? Math.max(...holesFromMatches, 9) : 9;
-      
-      // For skins, we need to recalculate net scores using handicap strokes
-      // Build a map of pairing -> player IDs and their combined handicap
-      const pairingInfo: Record<string, { playerIds: string[]; handicap: number; format: string }> = {};
-      courseMatches.forEach(match => {
-        if (!match.pairings) return;
-        Object.entries(match.pairings||{}).forEach(([pairingKey, playerIds]) => {
-          const globalKey = `${match.id}__${pairingKey}`;
-          const playerHandicaps = playerIds.map(pid => {
-            const player = tData.players?.find(p => p.id === pid);
-            return player?.handicapIndex ?? 0;
-          });
-          // For alternate shot: 50% of combined, for others: use combined
-          const combinedHcp = playerHandicaps.reduce((a, b) => a + b, 0);
-          const effectiveHcp = match.format === 'alternate' ? Math.round(combinedHcp * 0.5) : combinedHcp;
-          pairingInfo[globalKey] = { 
-            playerIds: playerIds, 
-            handicap: effectiveHcp,
-            format: match.format 
-          };
-        });
+      const sortedHoles = Array.from(holesPlayed).sort((a, b) => a - b);
+      // Fall back to holes 1-9 so the breakdown is visible even before scores load
+      const displayHoles = sortedHoles.length > 0 ? sortedHoles : Array.from({length:9},(_,i)=>i+1);
+
+      // Scores scoped to this course's completed matches
+      const courseScores: Record<string, Record<string,(number|null)[]>> = {};
+      completedCourseMatches.forEach(m => { courseScores[m.id] = allMatchScores[m.id] ?? {}; });
+
+      // ── use the same function as the live scoring screen ────────────────────
+      const holeResults = displayHoles.map(hole => ({
+        hole,
+        entry: completedCourseMatches.length > 0
+          ? calcGlobalSkinsForHole(hole, completedCourseMatches, courseScores, getTeeForMatch)
+          : null,
+      }));
+
+      // Tally skins per player (same points logic as calcMatchStatus)
+      const skinsByPlayer: Record<string, number> = {};
+      holeResults.forEach(({ entry }) => {
+        if (!entry) return;
+        const fmt = FORMATS[completedCourseMatches.find(m => m.id === entry.matchId)?.format ?? ''];
+        // team formats = 0.5 per partner; individual = 1.0
+        const isTeam = fmt && !fmt.perHole && (fmt.numMatchups ?? 0) <= 2 && entry.playerIds.length > 1;
+        const pts = entry.playerIds.length > 1 ? 0.5 : 1.0;
+        entry.playerIds.forEach(id => { skinsByPlayer[id] = (skinsByPlayer[id] || 0) + pts; });
       });
-      
-      // Find the lowest handicap pairing on this course (for relative stroke calculation)
-      const allHandicaps = Object.values(pairingInfo||{}).map(p => p.handicap);
-      const minHandicap = allHandicaps.length > 0 ? Math.min(...allHandicaps) : 0;
-      
-      for (let h = 1; h <= maxHoles; h++) {
-        const holeHcp = courseTee?.holes?.[h - 1]?.rank ?? h; // Hole handicap ranking
-        const holeNetScores: { key: string; net: number; playerIds: string[]; isBestBall: boolean }[] = [];
-        
-        Object.entries(allRawScoresForCourse).forEach(([key, scores]) => {
-          const info = pairingInfo[key];
-          if (!info) return;
-          
-          const isBestBall = info.format === 'bestball';
-          const isSingles = info.format === 'singles';
-          
-          // Calculate strokes this pairing gets on this hole relative to lowest handicap
-          const hcpDiff = info.handicap - minHandicap;
-          let strokes = 0;
-          if (hcpDiff > 0) {
-            const baseStrokes = Math.floor(hcpDiff / 18);
-            const extraStrokeHoles = hcpDiff % 18;
-            strokes = baseStrokes + (holeHcp <= extraStrokeHoles ? 1 : 0);
-          }
-          
-          // For Best Ball and Singles: track INDIVIDUAL players
-          // For team formats: track pairings (best score or team score)
-          if (isBestBall || isSingles) {
-            // Each player competes individually
-            info.playerIds.forEach(playerId => {
-              const rawScore = scores[h - 1]; // This is currently the best/team score
-              // We need individual scores, but allRawScoresForCourse stores pairing scores
-              // For now, use the scores from allMatchScores directly
-              const matchId = key.split('__')[0];
-              const individualScores = allMatchScores[matchId];
-              if (!individualScores || !individualScores[playerId]) return;
-              
-              const playerRawScore = individualScores[playerId][h - 1];
-              if (playerRawScore == null || typeof playerRawScore !== 'number') return;
-              
-              const netScore = playerRawScore - strokes;
-              holeNetScores.push({ key: playerId, net: netScore, playerIds: [playerId], isBestBall: true });
-            });
-          } else {
-            // Team formats: use team score
-            const rawScore = scores[h - 1];
-            if (rawScore == null || typeof rawScore !== 'number') return;
-            
-            const netScore = rawScore - strokes;
-            holeNetScores.push({ key, net: netScore, playerIds: info.playerIds, isBestBall: false });
-          }
-        });
-        
-        if (holeNetScores.length === 0) {
-          holeResults.push({ hole: h, winner: null, winnerName: 'No scores', winnerPlayerIds: [] });
-          continue;
-        }
-        
-        const minNet = Math.min(...holeNetScores.map(s => s.net));
-        const winners = holeNetScores.filter(s => s.net === minNet);
-        
-        if (winners.length === 1) {
-          const winnerEntry = winners[0];
-          const winnerPlayerIds = winnerEntry.playerIds;
-          
-          // For Best Ball/Singles: award 1.0 point to the individual winner
-          // For team formats: award 0.5 point to each partner
-          const pointsPerPlayer = winnerEntry.isBestBall ? 1.0 : (1.0 / winnerPlayerIds.length);
-          
-          winnerPlayerIds.forEach(pid => {
-            skinsByPlayer[pid] = (skinsByPlayer[pid] || 0) + pointsPerPlayer;
-          });
-          
-          // Get player names for display
-          const names = winnerPlayerIds.map(pid => tData.players?.find(p => p.id === pid)?.name || 'Unknown');
-          const winnerName = names.join(' & ');
-          
-          holeResults.push({ hole: h, winner: winnerEntry.key, winnerName, winnerPlayerIds });
-        } else {
-          holeResults.push({ hole: h, winner: null, winnerName: 'Push', winnerPlayerIds: [] });
-        }
-      }
-      
-      // Build summary by INDIVIDUAL player
-      const playerSummary: { playerId: string; name: string; skins: number }[] = [];
-      Object.entries(skinsByPlayer).forEach(([playerId, skins]) => {
-        const player = tData.players?.find(p => p.id === playerId);
-        const name = player?.name || 'Unknown';
-        playerSummary.push({ playerId, name, skins });
-      });
-      playerSummary.sort((a, b) => b.skins - a.skins);
-      
-      // Total skins = sum of all hole winners (not sum of player skins, since each win credits multiple players)
-      const totalSkins = holeResults.filter(r => r.winner !== null).length;
-      const potUnits = skinsPots[course.id] || 0;
-      const unitsPerSkin = totalSkins > 0 ? potUnits / totalSkins : 0;
-      
-      return {
-        course,
-        holeResults,
-        playerSummary,
-        totalSkins,
-        potUnits,
-        unitsPerSkin,
-        completedMatches: completedCourseMatches.length,
-        totalMatches: courseMatches.length,
-      };
+
+      const playerSummary = Object.entries(skinsByPlayer)
+        .map(([id, skins]) => ({ id, name: tData.players?.find(p => p.id === id)?.name ?? id, skins }))
+        .sort((a, b) => b.skins - a.skins);
+
+      const totalSkins  = holeResults.filter(r => r.entry !== null).length;
+      const potUnits    = skinsPots[course.id] ?? 0;
+      const unitsPerSkin = totalSkins > 0 && potUnits > 0 ? potUnits / totalSkins : 0;
+
+      return { course, holeResults, playerSummary, totalSkins, potUnits, unitsPerSkin,
+               completedMatches: completedCourseMatches.length, totalMatches: courseMatches.length };
     });
-    
+
+    // Save pot amount to Firebase on blur so all devices see the same value
+    const savePot = (courseId: string, val: number) =>
+      updateTournament(d => ({ ...d, skinsPots: { ...(d.skinsPots ?? {}), [courseId]: val } }));
+
     return (
       <BG>
         <TopBar title="Skins"/>
         <div className="max-w-2xl mx-auto p-4 space-y-6 pb-8 safe-bottom">
-          
+
           {courseSkinsData.length === 0 && (
-            <Card className="p-6 text-center">
-              <div className="text-white/50">No courses added yet</div>
-            </Card>
+            <Card className="p-6 text-center"><div className="text-white/50">No courses added yet</div></Card>
           )}
-          
+
           {courseSkinsData.map(({ course, holeResults, playerSummary, totalSkins, potUnits, unitsPerSkin, completedMatches, totalMatches }) => (
-            <Card key={course.id} className="p-4">
-              {/* Course Header */}
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="font-bebas font-bold text-white text-xl">{course.name}</h2>
-                  <div className="text-xs text-white/40">
-                    {completedMatches}/{totalMatches} matches completed • {totalSkins} skins won
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-white/40 mb-1">Pot (units)</div>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={potUnits || ''}
-                    onChange={(e) => setSkinsPots(prev => ({ ...prev, [course.id]: parseFloat(e.target.value) || 0 }))}
-                    placeholder="0"
-                    className="w-20 px-2 py-1 rounded-lg bg-white/10 border border-white/20 text-white text-center text-sm focus:outline-none focus:border-[#C9A227]"
-                  />
-                </div>
-              </div>
-              
-              {/* Empty State when no completed matches */}
-              {completedMatches === 0 && (
-                <div className="p-4 rounded-xl bg-white/5 text-center mb-4">
-                  <div className="text-white/40 text-sm">No completed matches yet</div>
-                  <div className="text-white/25 text-xs mt-1">Skins will appear once matches are scored</div>
-                </div>
-              )}
-              
-              {/* Units per Skin */}
-              {potUnits > 0 && totalSkins > 0 && (
-                <div className="mb-4 p-3 rounded-xl bg-[#C9A227]/10 border border-[#C9A227]/30">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[#C9A227] text-sm font-medium">Units per Skin</span>
-                    <span className="font-bebas font-bold text-[#C9A227] text-xl">{unitsPerSkin.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-              
-              {/* Payouts - By Individual Player */}
-              {playerSummary.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-xs text-white/40 mb-2 font-medium">INDIVIDUAL PAYOUTS</div>
-                  <div className="space-y-2">
-                    {playerSummary.map(({ playerId, name, skins }) => (
-                      <div key={playerId} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-yellow-400">🏆</span>
-                          <span className="text-white text-sm font-medium">{name}</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm">
-                          <span className="text-white/60">{skins} skin{skins !== 1 ? 's' : ''}</span>
-                          {potUnits > 0 && (
-                            <span className="text-emerald-400 font-bold">{(skins * unitsPerSkin).toFixed(2)} units</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {/* Hole-by-Hole Breakdown */}
-              <details className="group">
-                <summary className="cursor-pointer text-xs text-white/40 hover:text-white/60 py-2 flex items-center gap-1">
-                  <ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform"/>
-                  Hole-by-hole breakdown
-                </summary>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {holeResults.map(({ hole, winner, winnerName }) => (
-                    <div 
-                      key={hole} 
-                      className={`p-2 rounded-lg text-center text-xs ${winner ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-white/5 border border-white/10'}`}
-                    >
-                      <div className="text-white/40 mb-0.5">Hole {hole}</div>
-                      <div className={`font-medium truncate ${winner ? 'text-yellow-400' : 'text-white/30'}`}>
-                        {winnerName}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            </Card>
+            <SkinsCard key={course.id}
+              course={course} holeResults={holeResults} playerSummary={playerSummary}
+              totalSkins={totalSkins} potUnits={potUnits} unitsPerSkin={unitsPerSkin}
+              completedMatches={completedMatches} totalMatches={totalMatches}
+              players={tData.players ?? []} savePot={savePot}/>
           ))}
-          
-          {/* Tournament Totals - Individual Players Across All Courses */}
+
+          {/* Tournament Totals — only shown when multiple courses */}
           {courseSkinsData.length > 1 && (
             <Card className="p-4">
-              <h2 className="font-bebas font-bold text-white text-xl mb-4">Tournament Totals (Individual)</h2>
+              <h2 className="font-bebas font-bold text-white text-xl mb-4">Tournament Totals</h2>
               {(() => {
-                // Aggregate skins across all courses by INDIVIDUAL PLAYER
-                const totalsByPlayer: Record<string, { name: string; skins: number; payout: number }> = {};
-                let grandTotalSkins = 0;
-                let grandTotalPayout = 0;
-                
-                courseSkinsData.forEach(({ playerSummary, unitsPerSkin, potUnits, totalSkins }) => {
-                  playerSummary.forEach(({ playerId, name, skins }) => {
-                    if (!totalsByPlayer[playerId]) totalsByPlayer[playerId] = { name, skins: 0, payout: 0 };
-                    totalsByPlayer[playerId].skins += skins;
-                    totalsByPlayer[playerId].payout += skins * unitsPerSkin;
+                const totals: Record<string, { name: string; skins: number; payout: number }> = {};
+                courseSkinsData.forEach(({ playerSummary, unitsPerSkin }) => {
+                  playerSummary.forEach(({ id, name, skins }) => {
+                    if (!totals[id]) totals[id] = { name, skins: 0, payout: 0 };
+                    totals[id].skins += skins;
+                    totals[id].payout += skins * unitsPerSkin;
                   });
-                  grandTotalSkins += totalSkins;
-                  grandTotalPayout += potUnits;
                 });
-                
-                const sortedTotals = Object.entries(totalsByPlayer)
-                  .map(([playerId, data]) => ({ playerId, ...data }))
-                  .sort((a, b) => b.skins - a.skins);
-                
+                const sorted = Object.entries(totals).sort((a,b) => b[1].skins - a[1].skins);
+                if (!sorted.length) return <div className="text-center text-white/40 py-4">No skins won yet</div>;
                 return (
                   <div className="space-y-2">
-                    {sortedTotals.map(({ playerId, name, skins, payout }) => (
-                      <div key={playerId} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
+                    {sorted.map(([id, { name, skins, payout }]) => (
+                      <div key={id} className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
                         <div className="flex items-center gap-2">
-                          <span className="text-yellow-400">🏆</span>
-                          <span className="text-white text-sm font-medium">{name}</span>
+                          <span className="text-yellow-400 text-lg">🏆</span>
+                          <span className="text-white text-sm font-bold">{name}</span>
                         </div>
                         <div className="flex items-center gap-4 text-sm">
-                          <span className="text-white/60">{skins} skin{skins !== 1 ? 's' : ''}</span>
-                          {payout > 0 && (
-                            <span className="text-emerald-400 font-bold">{payout.toFixed(2)} units</span>
-                          )}
+                          <span className="text-white/60">{skins % 1 === 0 ? skins : skins.toFixed(1)} skin{skins !== 1 ? 's' : ''}</span>
+                          {payout > 0 && <span className="text-emerald-400 font-bold">{payout.toFixed(2)} units</span>}
                         </div>
                       </div>
                     ))}
-                    {sortedTotals.length === 0 && (
-                      <div className="text-center text-white/40 py-4">No skins won yet</div>
-                    )}
                   </div>
                 );
               })()}
