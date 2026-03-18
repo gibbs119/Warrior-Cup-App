@@ -428,21 +428,18 @@ const calcGlobalSkinsForHole = (
   const allEntries: SkinEntry[] = [];
 
   // For Best Ball / Singles: every player competes individually against the whole field.
-  // Strokes = full course hcp difference relative to the single lowest-hcp player across all matches.
-  // (NOT 90% — skins is full handicap; NOT per-match minimum — that gives different baselines)
+  // Global min = lowest full course hcp among ALL players listed in tData (same course/slope).
+  // We use the first available tee from any BB/singles match on this call's match list.
   const isBBorSingles = (m: Match) => m.format === 'bestball' || (FORMATS[m.format]?.ppp === 1);
   let globalMinHcp = 0;
-  if (players) {
-    const allHcps: number[] = [];
-    matches.filter(isBBorSingles).forEach(m => {
-      const tee = getTeeForMatch(m);
-      if (!tee) return;
-      Object.values(m.pairings ?? {}).flat().filter(Boolean).forEach(id => {
-        const p = players.find(x => x.id === id);
-        allHcps.push(courseHcp(p?.handicapIndex ?? 0, tee.slope)); // full course hcp
-      });
-    });
-    if (allHcps.length) globalMinHcp = Math.min(...allHcps);
+  if (players && players.length) {
+    // Find slope from the first BB/singles match that has a tee
+    let slope = 113; // USGA standard fallback
+    for (const m of matches.filter(isBBorSingles)) {
+      const t = getTeeForMatch(m);
+      if (t) { slope = t.slope; break; }
+    }
+    globalMinHcp = Math.min(...players.map(pl => courseHcp(pl.handicapIndex ?? 0, slope)));
   }
 
   for (const m of matches) {
@@ -474,7 +471,7 @@ const calcGlobalSkinsForHole = (
             const diff = myHcp - globalMinHcp;
             const base = Math.floor(diff / 18);
             const extra = hd.rank <= (diff % 18) ? 1 : 0;
-            playerSkinStrokes = base + extra;
+            playerSkinStrokes = Math.max(0, base + extra);
           } else {
             playerSkinStrokes = skinSt[pk] || 0;
           }
@@ -959,11 +956,14 @@ function GolfScoringApp() {
   }, [tournId, activeMatchId]);
 
   // Load all match scores for global skins calculation when entering scoring or skins screen
+  const [scoresLoading, setScoresLoading] = useState(false);
   useEffect(() => {
     if ((screen === 'scoring' || screen === 'skins') && tData?.matches?.length) {
+      setScoresLoading(true);
       (async () => {
         const all = await loadAllMatchScores();
         setAllMatchScores(all);
+        setScoresLoading(false);
       })();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1029,13 +1029,13 @@ function GolfScoringApp() {
       const id=genCode(6), pc=genCode(4), adminPc=genCode(4);
       const players: Player[] = [
         {id:'p1',name:'Ryan', handicapIndex:10,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-        {id:'p2',name:'Doby', handicapIndex:11,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-        {id:'p3',name:'Stevie',handicapIndex:22,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-        {id:'p4',name:'Erm',  handicapIndex:24,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p2',name:'Doby', handicapIndex:12,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p3',name:'Stevie',handicapIndex:23,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p4',name:'Erm',  handicapIndex:29,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
         {id:'p5',name:'Gibbs',handicapIndex:17,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-        {id:'p6',name:'Dief', handicapIndex:18,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-        {id:'p7',name:'Kev',  handicapIndex:21,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
-        {id:'p8',name:'Geoff',handicapIndex:28,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p6',name:'Dief', handicapIndex:15,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p7',name:'Kev',  handicapIndex:20,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
+        {id:'p8',name:'Geoff',handicapIndex:26,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
       ];
       const data: Tournament = {
         id, name:'Warrior Cup '+new Date().getFullYear(), passcode:pc, adminPasscode:adminPc,
@@ -2587,22 +2587,15 @@ function GolfScoringApp() {
                 const hasStroke = isBestBall && playerStrokes[id] > 0;
 
                 // Per-player skins stroke vs global field minimum
-                // Skins = FULL course hcp (not 90%) — all 8 players individually vs global lowest
+                // All 8 players compete on the same course → use current tee slope for everyone.
+                // Full course hcp (not 90%) — skins is stroke play, not match play allowance.
                 let playerSkinStrokes = skinSt[pk] ?? 0;
                 if (isBestBall && matchTee) {
-                  const fieldMatches = (tData?.matches ?? []).filter(mx =>
-                    mx.format === 'bestball' || FORMATS[mx.format]?.ppp === 1
-                  );
-                  const fieldHcps = fieldMatches.flatMap(mx => {
-                    const t = getTeeForMatch(mx);
-                    if (!t) return [] as number[];
-                    return Object.values(mx.pairings ?? {}).flat().filter(Boolean).map((pid: string) => {
-                      const pl = players.find(x => x.id === pid);
-                      return courseHcp(pl?.handicapIndex ?? 0, t.slope); // full course hcp
-                    });
-                  });
-                  const globalMin = fieldHcps.length ? Math.min(...fieldHcps) : 0;
-                  const myHcp = courseHcp(p?.handicapIndex ?? 0, matchTee.slope); // full, not 90%
+                  // Lowest full course hcp among ALL tournament players on this tee
+                  const globalMin = Math.min(...players.map(pl =>
+                    courseHcp(pl.handicapIndex ?? 0, matchTee.slope)
+                  ));
+                  const myHcp = courseHcp(p?.handicapIndex ?? 0, matchTee.slope);
                   const diff = myHcp - globalMin;
                   const base = Math.floor(diff / 18);
                   const extra = rank <= (diff % 18) ? 1 : 0;
@@ -2935,6 +2928,7 @@ function GolfScoringApp() {
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='skins') {
     if (!tData) return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
+    if (scoresLoading) return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center flex flex-col items-center gap-3 pt-16"><Spinner size={32} color="gold"/><div>Loading scores…</div></div></BG>;
 
     const courses    = tData.courses ?? [];
     const allMatches = tData.matches ?? [];
