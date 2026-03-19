@@ -775,12 +775,12 @@ interface SkinsCardProps {
   holeResults: SkinHoleResult[];
   playerSummary: { id: string; name: string; skins: number }[];
   totalSkins: number; potUnits: number; unitsPerSkin: number;
-  completedMatches: number; totalMatches: number;
+  completedMatches: number; totalMatches: number; inProgressCount: number;
   players: { id: string; name: string }[];
   savePot: (courseId: string, val: number) => void;
 }
 const SkinsCard = memo(({ course, holeResults, playerSummary, totalSkins, potUnits, unitsPerSkin,
-                           completedMatches, totalMatches, players, savePot }: SkinsCardProps) => {
+                           completedMatches, totalMatches, inProgressCount, players, savePot }: SkinsCardProps) => {
   const [potInput, setPotInput] = useState(potUnits > 0 ? String(potUnits) : '');
   useEffect(() => { setPotInput(potUnits > 0 ? String(potUnits) : ''); }, [potUnits]);
   return (
@@ -788,7 +788,10 @@ const SkinsCard = memo(({ course, holeResults, playerSummary, totalSkins, potUni
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="font-bebas font-bold text-white text-xl">{course.name}</h2>
-          <div className="text-xs text-white/40">{completedMatches}/{totalMatches} matches · {totalSkins} skin{totalSkins!==1?'s':''} won</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="text-xs text-white/40">{completedMatches}/{totalMatches} matches · {totalSkins} skin{totalSkins!==1?'s':''} won</div>
+            {inProgressCount>0&&<span className="text-xs font-bold text-emerald-400 animate-pulse">● {inProgressCount} live</span>}
+          </div>
         </div>
         <div className="text-right">
           <div className="text-xs text-white/40 mb-1">Pot (units)</div>
@@ -1730,6 +1733,109 @@ function GolfScoringApp() {
   const t2pts=teamPoints('team2');
   const possiblePts=totalPossiblePts();
   const toWin=possiblePts/2+0.5;
+
+  // ── Live augmented player stats ───────────────────────────────────────────────
+  // tData.players[].stats only updates on finishMatch(). This memo adds live
+  // in-progress contributions so every screen always reflects current scores.
+  const livePlayerStats = useMemo(() => {
+    const players = tData?.players ?? [];
+    const completedMatchIds = new Set((tData?.matchResults ?? []).map(r => r.matchId));
+    const inProgressMatches = (tData?.matches ?? []).filter(m =>
+      !completedMatchIds.has(m.id) &&
+      Object.keys(allMatchScores[m.id] ?? {}).some(pid =>
+        (allMatchScores[m.id][pid] ?? []).some(v => v != null)
+      )
+    );
+
+    if (!inProgressMatches.length) return players;
+
+    // Accumulate live contributions per player from in-progress matches
+    const livePts:   Record<string,number> = {};
+    const liveNet:   Record<string,number> = {};
+    const liveSkins: Record<string,number> = {};
+    players.forEach(p => { livePts[p.id]=0; liveNet[p.id]=0; liveSkins[p.id]=0; });
+
+    for (const m of inProgressMatches) {
+      const tee2 = getTeeForMatch(m);
+      if (!tee2) continue;
+      const scores = allMatchScores[m.id] ?? {};
+      const fmt = FORMATS[m.format];
+      if (!fmt) continue;
+
+      // Skins — reuse calcMatchStatus which already handles global skins
+      const ms2 = calcMatchStatus(m, scores, tee2,
+        tData?.matches ?? [], allMatchScores, getTeeForMatch);
+      Object.entries(ms2.playerSkins).forEach(([id, s]) => {
+        if (id in liveSkins) liveSkins[id] += s;
+      });
+
+      // Net-under-par per player
+      for (let h=1; h<=m.holes; h++) {
+        const ah = h + (m.startHole-1);
+        const hd2 = tee2.holes.find(x => x.h === ah);
+        if (!hd2) continue;
+        const skinSt2 = skinsStrokes(m.pairingHcps, hd2.rank);
+        for (const pk of Object.keys(m.pairings ?? {})) {
+          const pids = (m.pairings[pk] ?? []).filter(Boolean);
+          if (!pids.length) continue;
+          const raw = pairRawScore(m, pk, h, scores);
+          if (raw == null) continue;
+          const net = raw - (skinSt2[pk] || 0);
+          if (net < hd2.par) pids.forEach(id => { if (id in liveNet) liveNet[id]++; });
+        }
+      }
+
+      // Points contributed — mirror finishMatch logic
+      const pairs = getMatchupPairs(m.format);
+      if (fmt.perHole) {
+        for (let h=1; h<=m.holes; h++) {
+          const res2 = calcHoleResults(m, h, scores, tee2);
+          const w = res2?.matchupResults[0]?.winner;
+          if (!w || w==='tie') continue;
+          const winPks = w==='t1p' ? ['t1p1','t1p2'] : ['t2p1','t2p2'];
+          const skinSt3 = skinsStrokes(m.pairingHcps, res2.rank ?? h);
+          const pairNets = winPks.map(pk => {
+            const r2 = pairRawScore(m, pk, h, scores);
+            return r2!=null ? {pk, net:r2-(skinSt3[pk]||0), ids:(m.pairings[pk]??[])} : null;
+          }).filter(Boolean) as {pk:string;net:number;ids:string[]}[];
+          const bestNet = Math.min(...pairNets.map(x=>x.net));
+          pairNets.filter(x=>x.net===bestNet).forEach(pair => {
+            const share = pair.ids.length ? 0.5/pairNets.filter(x=>x.net===bestNet).length/pair.ids.length : 0;
+            pair.ids.filter(Boolean).forEach(id => { if (id in livePts) livePts[id]+=share; });
+          });
+        }
+      } else {
+        for (const [a,b] of pairs) {
+          let at1=0,at2=0;
+          for (let h=1; h<=m.holes; h++) {
+            const res2 = calcHoleResults(m, h, scores, tee2);
+            const mr = res2?.matchupResults.find(x=>x.a===a&&x.b===b);
+            if (mr?.winner==='t1p') at1++; else if (mr?.winner==='t2p') at2++;
+          }
+          const pts = fmt.pointsPerMatchup;
+          const aIds = (m.pairings[a]??[]).filter(Boolean);
+          const bIds = (m.pairings[b]??[]).filter(Boolean);
+          if (at1>at2) aIds.forEach(id=>{ if(id in livePts) livePts[id]+=pts/aIds.length; });
+          else if (at2>at1) bIds.forEach(id=>{ if(id in livePts) livePts[id]+=pts/bIds.length; });
+          else {
+            aIds.forEach(id=>{ if(id in livePts) livePts[id]+=(pts/2)/aIds.length; });
+            bIds.forEach(id=>{ if(id in livePts) livePts[id]+=(pts/2)/bIds.length; });
+          }
+        }
+      }
+    }
+
+    return players.map(p => ({
+      ...p,
+      stats: {
+        matchesPlayed:    p.stats?.matchesPlayed  ?? 0,
+        matchesWon:       p.stats?.matchesWon     ?? 0,
+        pointsContributed: (p.stats?.pointsContributed ?? 0) + (livePts[p.id]   ?? 0),
+        netUnderPar:       (p.stats?.netUnderPar       ?? 0) + (liveNet[p.id]   ?? 0),
+        skinsWon:          (p.stats?.skinsWon           ?? 0) + (liveSkins[p.id] ?? 0),
+      }
+    }));
+  }, [tData, allMatchScores]);
 
   // ── Top Navigation Bar ────────────────────────────────────────────────────────
   const TopBar = ({title,back}:{title?:string;back?:()=>void}) => (
@@ -2900,7 +3006,15 @@ function GolfScoringApp() {
           </div>
           {isScramble?(
             <div>
-              <div className="text-xs text-white/30 mb-2 font-bold tracking-wider uppercase">Team Score</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs text-white/30 font-bold tracking-wider uppercase">Team Score</div>
+                {teamScore!=null&&(
+                  <button onClick={()=>ids.forEach(id=>setScore(id,currentHole,null))}
+                    className="text-xs text-white/30 hover:text-red-400 font-bold px-2 py-1 rounded-lg border border-white/10 hover:border-red-400/40 transition-all min-h-[36px]">
+                    Clear
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-5 gap-2">
                 {[1,2,3,4,5,6,7,8,9,10].map(n=>{
                   const par = hd?.par ?? 4;
@@ -2947,6 +3061,12 @@ function GolfScoringApp() {
                       <span className={`whitespace-nowrap ${playerSkinStrokes > 0 ? 'text-yellow-300' : 'text-white/20'}`}>
                         🏆 {playerSkinStrokes > 0 ? `Skin hdcp −${playerSkinStrokes}` : 'No skin stroke'}
                       </span>
+                      {sc !== null && (
+                        <button onClick={()=>setScore(id,currentHole,null)}
+                          className="ml-auto text-xs text-white/25 hover:text-red-400 font-bold px-2 py-0.5 rounded-lg border border-white/10 hover:border-red-400/40 transition-all min-h-[28px]">
+                          Clear
+                        </button>
+                      )}
                     </div>
                     <div className="grid grid-cols-5 gap-2">
                       {[1,2,3,4,5,6,7,8,9,10].map(n=>{
@@ -3305,8 +3425,8 @@ function GolfScoringApp() {
     if (!tData) {
       return <BG><TopBar title="Standings"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
     }
-    const players=tData.players??[];
-    
+    const players=livePlayerStats;
+
     // MVP ranking calculation
     const contribs = [...players].map(p=>({
       ...p,
@@ -3388,6 +3508,9 @@ function GolfScoringApp() {
             <div className="flex items-center gap-2 mb-4">
               <Award className="w-5 h-5 text-yellow-600"/>
               <h2 className="font-bebas font-bold text-white text-xl">MVP Race</h2>
+              {livePlayerStats !== (tData?.players ?? []) && (
+                <span className="text-xs font-bold text-emerald-400 animate-pulse">● live</span>
+              )}
             </div>
             <div className="space-y-2">
               {contribs.map((p,i)=>{
@@ -3446,8 +3569,17 @@ function GolfScoringApp() {
       );
       const completedCourseMatches = courseMatches.filter(m => completedIds.has(m.id));
 
+      // Include in-progress matches that have at least one score entered
+      const scoredCourseMatches = courseMatches.filter(m =>
+        completedIds.has(m.id) ||
+        Object.values(allMatchScores[m.id] ?? {}).some((arr: any) =>
+          (arr as (number|null)[]).some((v: number|null) => v != null)
+        )
+      );
+      const inProgressCount = scoredCourseMatches.filter(m => !completedIds.has(m.id)).length;
+
       const holesPlayed = new Set<number>();
-      completedCourseMatches.forEach(m => {
+      scoredCourseMatches.forEach(m => {
         for (let i = 0; i < m.holes; i++) holesPlayed.add(m.startHole + i);
       });
       const displayHoles = holesPlayed.size > 0
@@ -3455,20 +3587,18 @@ function GolfScoringApp() {
         : Array.from({length:9}, (_,i) => i+1);
 
       const courseScores: Record<string, Record<string,(number|null)[]>> = {};
-      completedCourseMatches.forEach(m => { courseScores[m.id] = allMatchScores[m.id] ?? {}; });
+      scoredCourseMatches.forEach(m => { courseScores[m.id] = allMatchScores[m.id] ?? {}; });
 
-      // Use the same function as live scoring — now with players for correct individual hcp strokes
       const holeResults = displayHoles.map(hole => ({
         hole,
-        entry: completedCourseMatches.length > 0
-          ? calcGlobalSkinsForHole(hole, completedCourseMatches, courseScores, getTeeForMatch, tData.players)
+        entry: scoredCourseMatches.length > 0
+          ? calcGlobalSkinsForHole(hole, scoredCourseMatches, courseScores, getTeeForMatch, tData.players)
           : null,
       }));
 
       const skinsByPlayer: Record<string, number> = {};
       holeResults.forEach(({ entry }) => {
         if (!entry) return;
-        const fmt = FORMATS[completedCourseMatches.find(m => m.id === entry.matchId)?.format ?? ''];
         const pts = entry.playerIds.length > 1 ? 0.5 : 1.0;
         entry.playerIds.forEach(id => { skinsByPlayer[id] = (skinsByPlayer[id] || 0) + pts; });
       });
@@ -3482,7 +3612,8 @@ function GolfScoringApp() {
       const unitsPerSkin = totalSkins > 0 && potUnits > 0 ? potUnits / totalSkins : 0;
 
       return { course, holeResults, playerSummary, totalSkins, potUnits, unitsPerSkin,
-               completedMatches: completedCourseMatches.length, totalMatches: courseMatches.length };
+               completedMatches: completedCourseMatches.length, totalMatches: courseMatches.length,
+               inProgressCount };
     });
 
     const savePot = (courseId: string, val: number) =>
@@ -3497,11 +3628,11 @@ function GolfScoringApp() {
             <Card className="p-6 text-center"><div className="text-white/50">No courses added yet</div></Card>
           )}
 
-          {courseSkinsData.map(({ course, holeResults, playerSummary, totalSkins, potUnits, unitsPerSkin, completedMatches, totalMatches }) => (
+          {courseSkinsData.map(({ course, holeResults, playerSummary, totalSkins, potUnits, unitsPerSkin, completedMatches, totalMatches, inProgressCount }) => (
             <SkinsCard key={course.id}
               course={course} holeResults={holeResults} playerSummary={playerSummary}
               totalSkins={totalSkins} potUnits={potUnits} unitsPerSkin={unitsPerSkin}
-              completedMatches={completedMatches} totalMatches={totalMatches}
+              completedMatches={completedMatches} totalMatches={totalMatches} inProgressCount={inProgressCount}
               players={tData.players ?? []} savePot={savePot}/>
           ))}
 
