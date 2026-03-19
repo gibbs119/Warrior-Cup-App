@@ -856,6 +856,7 @@ function GolfScoringApp() {
   const [matchLoading, setMatchLoading] = useState(false);
   const [scoringLoading, setScoringLoading] = useState(false);
   const [enteringScores, setEnteringScores] = useState(false);
+  const [showLiveCard, setShowLiveCard]     = useState(false);
   
   // ── Toast Notifications ──────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<Array<{id: string; message: string; type: 'success' | 'error' | 'info'}>>([]);
@@ -878,6 +879,8 @@ function GolfScoringApp() {
   );
   const [manualCourse, setManualCourse] = useState<Course>({id:'',name:'',location:'',tees:[blankTee()]});
   const unsubRef = useRef<(()=>void)|null>(null);
+  const activeMatchIdRef = useRef<string|null>(null);
+  useEffect(() => { activeMatchIdRef.current = activeMatchId; }, [activeMatchId]);
 
   // ── Global Error Handler ─────────────────────────────────────────────────────
   // Catch all unhandled promise rejections to prevent silent failures
@@ -939,39 +942,52 @@ function GolfScoringApp() {
   useEffect(() => {
     if (!tournId) return;
     unsubRef.current?.();
+
+    // Tournament metadata — live
     const tournRef = ref(db, `tournaments/${tournId}`);
     const unsubTourn = onValue(tournRef, snap => {
       const data = snap.val() as Tournament|null;
       if (data) setTData(normalizeTournament(data));
     });
-    let unsubScores: (()=>void)|undefined;
-    if (activeMatchId) {
-      const scoresRef = ref(db, `scores/${tournId}/${activeMatchId}`);
-      unsubScores = onValue(scoresRef, snap => {
-        const s = snap.val() as Record<string,(number|null)[]>|null;
-        if (s) {
-          setLocalScores(prev=>({...prev,...s}));
-          setAllMatchScores(prev=>({...prev,[activeMatchId]:s}));
-        }
-      });
-    }
-    unsubRef.current = () => { unsubTourn(); unsubScores?.(); };
-    return () => { unsubRef.current?.(); };
-  }, [tournId, activeMatchId]);
 
-  // Load all match scores for global skins calculation when entering scoring or skins screen
+    // ALL match scores — subscribe to the whole scores tree so every concurrent
+    // update from every user is visible in real-time, regardless of which match
+    // they are scoring. This keeps allMatchScores live for global skins calcs.
+    const scoresRef = ref(db, `scores/${tournId}`);
+    const unsubScores = onValue(scoresRef, snap => {
+      const allScores = snap.val() as Record<string, Record<string,(number|null)[]>> | null;
+      if (!allScores) return;
+
+      // Always keep allMatchScores fully up to date
+      setAllMatchScores(allScores);
+
+      // Merge active match scores into localScores.
+      // Rule: keep local value if already set (user may have unsaved changes);
+      // fill in holes-not-yet-set from Firebase (another user may have entered them).
+      const mid = activeMatchIdRef.current;
+      if (mid && allScores[mid]) {
+        setLocalScores(prev => {
+          const incoming = allScores[mid];
+          const merged: Record<string,(number|null)[]> = { ...prev };
+          for (const [pid, holes] of Object.entries(incoming)) {
+            if (!merged[pid]) {
+              merged[pid] = holes as (number|null)[];
+            } else {
+              merged[pid] = (merged[pid] as (number|null)[]).map(
+                (local, i) => local !== null ? local : ((holes as (number|null)[])[i] ?? null)
+              );
+            }
+          }
+          return merged;
+        });
+      }
+    });
+
+    unsubRef.current = () => { unsubTourn(); unsubScores(); };
+    return () => { unsubRef.current?.(); };
+  }, [tournId]); // intentionally only tournId — one subscription per session
+
   const [scoresLoading, setScoresLoading] = useState(false);
-  useEffect(() => {
-    if ((screen === 'scoring' || screen === 'skins') && tData?.matches?.length) {
-      setScoresLoading(true);
-      (async () => {
-        const all = await loadAllMatchScores();
-        setAllMatchScores(all);
-        setScoresLoading(false);
-      })();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, tData?.matches?.length, tData?.matchResults?.length]);
 
   // ── Firebase CRUD ────────────────────────────────────────────────────────────
   // ─── Firebase Operations (Concurrent-Safe) ────────────────────────────────────
@@ -1451,12 +1467,33 @@ function GolfScoringApp() {
     const m=getMatch(activeMatchId); const tee=getTeeForMatch(m);
     if(!m||!tee) return;
     const fmt=FORMATS[m.format];
+
+    // Always load the authoritative scores from Firebase and merge with local.
+    // Local values win (the admin/scorer's intentional input), but Firebase fills
+    // in any holes scored concurrently by another user that haven't propagated yet.
+    let freshScores: Record<string,(number|null)[]> = {};
+    try {
+      freshScores = await loadMatchScores(activeMatchId!);
+    } catch (err) {
+      console.error('Could not load fresh scores, proceeding with local:', err);
+    }
+    const computeScores: Record<string,(number|null)[]> = { ...freshScores };
+    for (const [pid, holes] of Object.entries(localScores)) {
+      if (!computeScores[pid]) {
+        computeScores[pid] = holes;
+      } else {
+        computeScores[pid] = (computeScores[pid] as (number|null)[]).map(
+          (fb, i) => (holes[i] !== null && holes[i] !== undefined) ? holes[i] : fb
+        );
+      }
+    }
+
     const matchupPts={team1:0,team2:0};
 
     if(fmt.perHole) {
       let t1Holes=0, t2Holes=0;
       for(let h=1;h<=m.holes;h++){
-        const res=calcHoleResults(m,h,localScores,tee);
+        const res=calcHoleResults(m,h,computeScores,tee);
         const w=res?.matchupResults[0]?.winner;
         if(w==='t1p') t1Holes++;
         else if(w==='t2p') t2Holes++;
@@ -1469,7 +1506,7 @@ function GolfScoringApp() {
       for(const [a,b] of pairs){
         let at1=0,at2=0;
         for(let h=1;h<=m.holes;h++){
-          const res=calcHoleResults(m,h,localScores,tee);
+          const res=calcHoleResults(m,h,computeScores,tee);
           const mr=res?.matchupResults.find(x=>x.a===a&&x.b===b);
           if(mr?.winner==='t1p')at1++;else if(mr?.winner==='t2p')at2++;
         }
@@ -1479,17 +1516,16 @@ function GolfScoringApp() {
         else{matchupPts.team1+=pts/2;matchupPts.team2+=pts/2;}
       }
     }
-    
-    // Load all match scores for global skins calculation
-    const freshAllScores = await loadAllMatchScores();
-    // Include current local scores (most up-to-date)
-    const combinedAllScores = { ...freshAllScores, [activeMatchId!]: localScores };
+
+    // allMatchScores is kept live by the real-time subscription — no need to reload.
+    // Just patch in the merged computeScores for the current match.
+    const combinedAllScores = { ...allMatchScores, [activeMatchId!]: computeScores };
     const allMatches = tData?.matches ?? [];
-    
-    const ms=calcMatchStatus(m, localScores, tee, allMatches, combinedAllScores, getTeeForMatch);
+
+    const ms=calcMatchStatus(m, computeScores, tee, allMatches, combinedAllScores, getTeeForMatch);
 
     try {
-      await saveMatchScores(activeMatchId!,localScores);
+      await saveMatchScores(activeMatchId!, computeScores);
     } catch (err) {
       console.error('Failed to save match scores:', err);
       showToast('Error saving scores. Please try again.', 'error');
@@ -1507,13 +1543,13 @@ function GolfScoringApp() {
 
     if (fmt.perHole) {
       for (let h=1;h<=m.holes;h++) {
-        const res = calcHoleResults(m,h,localScores,tee);
+        const res = calcHoleResults(m,h,computeScores,tee);
         const w = res?.matchupResults[0]?.winner;
         if (!w || w==='tie') continue;
         const winPks = w==='t1p' ? ['t1p1','t1p2'] : ['t2p1','t2p2'];
         const skinSt = skinsStrokes(m.pairingHcps, res.rank??h);
         const pairNets = winPks.map(pk => {
-          const raw = pairRawScore(m,pk,h,localScores);
+          const raw = pairRawScore(m,pk,h,computeScores);
           return raw!=null ? {pk, net: raw-(skinSt[pk]||0), ids: m.pairings[pk]??[]} : null;
         }).filter(Boolean) as {pk:string;net:number;ids:string[]}[];
         const bestNet = Math.min(...pairNets.map(x=>x.net));
@@ -1528,7 +1564,7 @@ function GolfScoringApp() {
       for (const [a,b] of pairs) {
         let at1=0,at2=0;
         for (let h=1;h<=m.holes;h++) {
-          const res = calcHoleResults(m,h,localScores,tee);
+          const res = calcHoleResults(m,h,computeScores,tee);
           const mr = res?.matchupResults.find(x=>x.a===a&&x.b===b);
           if (mr?.winner==='t1p') at1++; else if (mr?.winner==='t2p') at2++;
         }
@@ -1553,7 +1589,7 @@ function GolfScoringApp() {
       for (const pk of Object.keys(m.pairings??{})) {
         const ids = (m.pairings[pk]??[]).filter(Boolean);
         if (!ids.length) continue;
-        const raw = pairRawScore(m, pk, h, localScores);
+        const raw = pairRawScore(m, pk, h, computeScores);
         if (raw == null) continue;
         const net = raw - (skinSt[pk]||0);
         if (net < hd.par) ids.forEach(id => { playerNetUnderPar[id]=(playerNetUnderPar[id]||0)+1; });
@@ -2809,11 +2845,113 @@ function GolfScoringApp() {
 
     return (
       <BG>
+        {/* ── Live Scorecard Modal ─────────────────────────────────────────── */}
+        {showLiveCard&&(
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:'rgba(0,0,0,0.85)'}} onClick={()=>setShowLiveCard(false)}>
+            <div className="w-full sm:max-w-3xl rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[88vh] flex flex-col" style={{background:'#0D1B2A',border:'1px solid rgba(255,255,255,0.1)',paddingBottom:'env(safe-area-inset-bottom)'}} onClick={e=>e.stopPropagation()}>
+              {/* Modal header */}
+              <div className="px-4 pt-4 pb-3 border-b border-white/10 flex items-center justify-between shrink-0">
+                <div>
+                  <div className="font-bebas font-bold text-white text-lg">{fmt.name} · {m.startHole===1?'Front':'Back'} 9</div>
+                  <div className="text-xs text-white/30">
+                    Through {runningHolesCount} hole{runningHolesCount!==1?'s':''} · {
+                      ms.leader==='team1'?`${tData?.teamNames?.team1??'Team 1'} leads ${ms.label}`:
+                      ms.leader==='team2'?`${tData?.teamNames?.team2??'Team 2'} leads ${ms.label}`:'All Square'
+                    }
+                  </div>
+                </div>
+                <button onClick={()=>setShowLiveCard(false)} className="min-w-[44px] min-h-[44px] flex items-center justify-center text-white/40 hover:text-white text-2xl">✕</button>
+              </div>
+              {/* Score table */}
+              <div className="overflow-auto flex-1">
+                <table className="w-full text-xs border-collapse" style={{minWidth:'420px'}}>
+                  <thead>
+                    <tr style={{background:'rgba(201,162,39,0.15)'}}>
+                      <th className="p-2 text-left text-yellow-300 font-bold sticky left-0 z-10" style={{background:'rgba(13,27,42,0.98)',minWidth:'80px'}}>Player</th>
+                      {Array.from({length:m.holes},(_,i)=>i+1).map(mh=>{
+                        const ah=mh+(m.startHole-1);
+                        const hd2=matchTee?.holes.find(x=>x.h===ah);
+                        const res2=calcHoleResults(m,mh,localScores,matchTee);
+                        const wins={t1:0,t2:0};
+                        res2?.matchupResults?.forEach(r=>{if(r.winner==='t1p')wins.t1++;else if(r.winner==='t2p')wins.t2++;});
+                        const scored=res2?.matchupResults?.some(r=>r.winner!=null);
+                        const hdrBg=scored?(wins.t1>wins.t2?'rgba(29,78,216,0.4)':wins.t2>wins.t1?'rgba(185,28,28,0.4)':'rgba(255,255,255,0.08)'):'transparent';
+                        return (
+                          <th key={mh} className="p-1.5 text-center font-bold" style={{minWidth:'2.25rem',background:hdrBg}}>
+                            <div className={scored?(wins.t1>wins.t2?'text-blue-300':wins.t2>wins.t1?'text-red-300':'text-white/50'):'text-yellow-300/60'}>{ah}</div>
+                            {hd2&&<div className="text-white/25 font-normal text-xs">P{hd2.par}</div>}
+                          </th>
+                        );
+                      })}
+                      <th className="p-2 text-center text-yellow-300 font-bold sticky right-0 z-10" style={{background:'rgba(13,27,42,0.98)'}}>Tot</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allScoringIds.map((id,ri)=>{
+                      const p2=players.find(x=>x.id===id);
+                      const isT1=(tData?.teams?.team1??[]).includes(id);
+                      const rowScores=localScores[id]??[];
+                      const total=rowScores.filter((v):v is number=>v!=null).reduce((a,b)=>a+b,0);
+                      const hasAny=rowScores.some(v=>v!=null);
+                      return (
+                        <tr key={id} className="border-b border-white/5" style={{background:ri%2===0?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.01)'}}>
+                          <td className={`p-2 font-bold sticky left-0 z-10 truncate ${isT1?'text-blue-300':'text-red-300'}`} style={{background:ri%2===0?'rgba(13,27,42,0.97)':'rgba(13,27,42,0.95)',maxWidth:'80px'}}>{p2?.name??id}</td>
+                          {Array.from({length:m.holes},(_,i)=>i+1).map(mh=>{
+                            const ah=mh+(m.startHole-1);
+                            const hd2=matchTee?.holes.find(x=>x.h===ah);
+                            const par=hd2?.par??4;
+                            const sc=rowScores[mh-1];
+                            const diff=sc!=null?sc-par:null;
+                            const color=diff==null?'text-white/15':diff<=-2?'text-yellow-400 font-black':diff===-1?'text-red-400 font-bold':diff===0?'text-white/60':diff===1?'text-blue-400':'text-blue-300 font-bold';
+                            return <td key={mh} className={`p-1 text-center ${color}`}>{sc??'·'}</td>;
+                          })}
+                          <td className="p-2 text-center font-black text-white sticky right-0 z-10" style={{background:ri%2===0?'rgba(13,27,42,0.97)':'rgba(13,27,42,0.95)'}}>{hasAny?total:'—'}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{background:'rgba(5,46,22,0.4)'}}>
+                      <td className="p-2 font-bold text-emerald-300 sticky left-0 z-10" style={{background:'rgba(5,46,22,0.9)'}}>Par</td>
+                      {Array.from({length:m.holes},(_,i)=>i+1).map(mh=>{
+                        const ah=mh+(m.startHole-1);
+                        const hd2=matchTee?.holes.find(x=>x.h===ah);
+                        return <td key={mh} className="p-1 text-center text-emerald-300/60">{hd2?.par??'—'}</td>;
+                      })}
+                      <td className="p-2 text-center text-emerald-300 font-bold sticky right-0 z-10" style={{background:'rgba(5,46,22,0.9)'}}>
+                        {matchTee?Array.from({length:m.holes},(_,i)=>i+1).reduce((s,mh)=>{const ah=mh+(m.startHole-1);return s+(matchTee.holes.find(x=>x.h===ah)?.par??0);},0):'—'}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {/* Hole-winner strip */}
+              <div className="px-4 pt-3 pb-2 border-t border-white/10 shrink-0">
+                <div className="text-xs font-bold text-white/30 tracking-widest uppercase mb-2">Hole Results</div>
+                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
+                  {Array.from({length:m.holes},(_,i)=>i+1).map(mh=>{
+                    const ah=mh+(m.startHole-1);
+                    const res2=calcHoleResults(m,mh,localScores,matchTee);
+                    const wins={t1:0,t2:0};
+                    res2?.matchupResults?.forEach(r=>{if(r.winner==='t1p')wins.t1++;else if(r.winner==='t2p')wins.t2++;});
+                    const scored=res2?.matchupResults?.some(r=>r.winner!=null);
+                    const bg=!scored?'bg-white/5 text-white/20':wins.t1>wins.t2?'bg-blue-600 text-white':wins.t2>wins.t1?'bg-red-600 text-white':'bg-white/15 text-white/60';
+                    const label=!scored?'·':wins.t1>wins.t2?(tData?.teamNames?.team1??'T1').slice(0,1):wins.t2>wins.t1?(tData?.teamNames?.team2??'T2').slice(0,1):'AS';
+                    return (
+                      <div key={mh} className={`flex-shrink-0 w-11 h-11 rounded-xl flex flex-col items-center justify-center ${bg}`}>
+                        <div className="font-bebas font-bold text-sm leading-none">{ah}</div>
+                        <div className="text-xs leading-none mt-0.5 font-bold">{label}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Hole Header */}
         <div className="sticky top-0 z-20 border-b border-white/10" style={{background:'rgba(11,22,40,0.98)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)'}}>
           <div className="flex items-center justify-between px-4 pb-2" style={{paddingTop:'calc(env(safe-area-inset-top) + 12px)'}}>
             <button onClick={()=>{setScreen('tournament');if(editingScores)setEditingScores(false);}}
-              className="flex items-center gap-1 text-yellow-400 text-sm font-bold">
+              className="flex items-center gap-1 text-yellow-400 text-sm font-bold min-h-[44px]">
               <ChevronLeft className="w-4 h-4"/>Schedule
             </button>
             <div className="text-center">
@@ -2823,9 +2961,18 @@ function GolfScoringApp() {
               </div>
               <div className="text-xs text-white/30">{hd?.yards??'—'}yds · Rank {rank}</div>
             </div>
-            <div className="text-center">
-              <div className={`font-bebas font-black text-2xl ${ms.leader==='team1'?'text-blue-300':ms.leader==='team2'?'text-red-300':'text-white/60'}`}>{ms.label}</div>
-              <div className="text-xs text-white/30">{ms.t1Holes}–{ms.t2Holes}</div>
+            <div className="flex items-center gap-2">
+              <div className="text-center">
+                <div className={`font-bebas font-black text-2xl ${ms.leader==='team1'?'text-blue-300':ms.leader==='team2'?'text-red-300':'text-white/60'}`}>{ms.label}</div>
+                <div className="text-xs text-white/30">{ms.t1Holes}–{ms.t2Holes}</div>
+              </div>
+              {runningHolesCount>0&&(
+                <button onClick={()=>setShowLiveCard(true)}
+                  className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl border border-white/15 text-white/50 hover:text-white hover:border-white/30 text-base"
+                  title="View scorecard">
+                  📋
+                </button>
+              )}
             </div>
           </div>
 
