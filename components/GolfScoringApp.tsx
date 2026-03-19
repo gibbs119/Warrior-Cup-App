@@ -448,12 +448,32 @@ const calcGlobalSkinsForHole = (
     const hd = tee.holes.find(x => x.h === hole);
     if (!hd) continue;
     const scores = allScores[m.id] ?? {};
-    const skinSt = skinsStrokes(m.pairingHcps, hd.rank); // team formats only
+
+    // Scores are stored 0-indexed from the START of the match, not from course hole 1.
+    // For Front 9 (startHole=1): scoreIdx = hole-1. For Back 9 (startHole=10): scoreIdx = hole-10.
+    const scoreIdx = hole - m.startHole;
+    if (scoreIdx < 0 || scoreIdx >= m.holes) continue; // hole not part of this match
+
     const fmt = FORMATS[m.format];
     const isSingles = fmt?.ppp === 1;
     const isBestBall = m.format === 'bestball';
 
     const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
+
+    // For team formats: build skinSt only from pairings that have a score on this hole.
+    // This prevents a pairing with pairingHcp=0 (unassigned/partial) from dragging the
+    // minimum to 0 and giving all real pairings artificial strokes they shouldn't receive.
+    let skinSt: Record<string,number> = {};
+    if (!isBestBall && !isSingles) {
+      const activePkHcps: Record<string,number> = {};
+      for (const pk of allPkKeys) {
+        const ids2 = (m.pairings??{})[pk] ?? [];
+        if (!ids2.length) continue;
+        const raw2 = scores[ids2[0]]?.[scoreIdx] ?? null;
+        if (raw2 != null) activePkHcps[pk] = m.pairingHcps[pk] ?? 0;
+      }
+      if (Object.keys(activePkHcps).length) skinSt = skinsStrokes(activePkHcps, hd.rank);
+    }
 
     for (const pk of allPkKeys) {
       const ids = (m.pairings??{})[pk] ?? [];
@@ -462,7 +482,7 @@ const calcGlobalSkinsForHole = (
       if (isBestBall || isSingles) {
         // Individual skins: each player vs global field minimum using FULL course hcp
         for (const playerId of ids) {
-          const raw = scores[playerId]?.[hole - 1] ?? null;
+          const raw = scores[playerId]?.[scoreIdx] ?? null;
           if (raw == null) continue;
           let playerSkinStrokes = 0;
           if (players) {
@@ -478,9 +498,9 @@ const calcGlobalSkinsForHole = (
           allEntries.push({ matchId: m.id, pk, playerIds: [playerId], net: raw - playerSkinStrokes });
         }
       } else {
-        // Team formats: pairing-level strokes (correct as-is)
+        // Team formats: pairing-level strokes relative to active-pairing minimum
         const pid = ids[0];
-        const raw = scores[pid]?.[hole - 1] ?? null;
+        const raw = scores[pid]?.[scoreIdx] ?? null;
         if (raw == null) continue;
         allEntries.push({ matchId: m.id, pk, playerIds: ids, net: raw - (skinSt[pk] || 0) });
       }
@@ -919,6 +939,7 @@ function GolfScoringApp() {
   const unsubRef = useRef<(()=>void)|null>(null);
   const activeMatchIdRef = useRef<string|null>(null);
   useEffect(() => { activeMatchIdRef.current = activeMatchId; }, [activeMatchId]);
+  const scoreSaveTimerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
 
   // ── Global Error Handler ─────────────────────────────────────────────────────
   // Catch all unhandled promise rejections to prevent silent failures
@@ -1320,10 +1341,24 @@ function GolfScoringApp() {
         return;
       }
     }
-    
-    setLocalScores(prev=>{
+
+    setLocalScores(prev => {
       const arr = prev[pid] ? [...prev[pid]] : Array(getMatch(activeMatchId)?.holes??9).fill(null);
-      arr[hole-1]=val; return {...prev,[pid]:arr};
+      arr[hole-1] = val;
+      const next = {...prev, [pid]: arr};
+
+      // Debounced real-time save — fires 600ms after the last score tap.
+      // This keeps all devices in sync so global skins are calculated
+      // from up-to-date data, even before the user taps Next.
+      if (scoreSaveTimerRef.current) clearTimeout(scoreSaveTimerRef.current);
+      const mid = activeMatchIdRef.current;
+      if (mid) {
+        scoreSaveTimerRef.current = setTimeout(() => {
+          saveMatchScores(mid, next).catch(err => console.error('Auto-save failed:', err));
+        }, 600);
+      }
+
+      return next;
     });
   };
   const saveScores = async () => { if (activeMatchId) await saveMatchScores(activeMatchId, localScores); };
@@ -2855,7 +2890,6 @@ function GolfScoringApp() {
                       ? <span className="whitespace-nowrap"> vs all 4 · Rank {rank}</span>
                       : !fmt.perHole&&<span className="whitespace-nowrap"> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</span>
                     }
-                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Skin hdcp +{skinSt[pk]}</span>}
                   </span>
                 )}
               </div>
@@ -3049,7 +3083,11 @@ function GolfScoringApp() {
         {/* Hole Header */}
         <div className="sticky top-0 z-20 border-b border-white/10" style={{background:'rgba(11,22,40,0.98)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)'}}>
           <div className="flex items-center justify-between px-4 pb-2" style={{paddingTop:'calc(env(safe-area-inset-top) + 12px)'}}>
-            <button onClick={()=>{setScreen('tournament');if(editingScores)setEditingScores(false);}}
+            <button onClick={async()=>{
+                if(activeMatchId) await saveMatchScores(activeMatchId, localScores);
+                setScreen('tournament');
+                if(editingScores)setEditingScores(false);
+              }}
               className="flex items-center gap-1 text-yellow-400 text-sm font-bold min-h-[44px]">
               <ChevronLeft className="w-4 h-4"/>Schedule
             </button>
