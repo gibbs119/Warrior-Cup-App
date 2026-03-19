@@ -573,28 +573,32 @@ ScriptWboro.displayName = 'ScriptWboro';
 // ─── Theme: Whitesboro Warriors — Navy / Royal Blue / Gold ───────────────────
 // Navy: #0A1628 | Royal Blue: #006BB6 | Gold: #C9A227 | White: #F0F4FF
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-body { font-family: 'Inter', system-ui, sans-serif; }
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; -webkit-touch-callout: none; }
+html { -webkit-text-size-adjust: 100%; }
+body { font-family: 'Inter', system-ui, sans-serif; overscroll-behavior: none; }
 .font-bebas { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.06em; }
 .font-script { font-family: 'Brush Script MT', 'Lucida Handwriting', cursive; }
-.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom, 16px), 16px); }
+.safe-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + 16px); }
 .safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
 input, select, textarea { font-size: 16px !important; }
+input[type=number] { -webkit-appearance: none; -moz-appearance: textfield; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .scrollbar-hide::-webkit-scrollbar { display: none; }
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-.card-dark { background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.10); }
-.card-dark-accent { background: rgba(201,162,39,0.10); backdrop-filter: blur(12px); border: 1px solid rgba(201,162,39,0.25); }
-.card-blue { background: rgba(0,107,182,0.20); backdrop-filter: blur(12px); border: 1px solid rgba(0,107,182,0.40); }
-.card-red  { background: rgba(200,16,46,0.15);  backdrop-filter: blur(12px); border: 1px solid rgba(200,16,46,0.35); }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.card-dark { background: rgba(255,255,255,0.06); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.10); }
+.card-dark-accent { background: rgba(201,162,39,0.10); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(201,162,39,0.25); }
+.card-blue { background: rgba(0,107,182,0.20); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(0,107,182,0.40); }
+.card-red  { background: rgba(200,16,46,0.15);  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(200,16,46,0.35); }
 .glow-gold { box-shadow: 0 0 40px rgba(201,162,39,0.25), 0 4px 24px rgba(0,0,0,0.5); }
 .glow-blue { box-shadow: 0 0 24px rgba(0,107,182,0.30), 0 2px 12px rgba(0,0,0,0.4); }
 `;
 
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 const BG = memo(({children}: {children: React.ReactNode}) => (
-  <div className="min-h-[100dvh] relative overflow-x-hidden" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
+  <div className="min-h-[100dvh] relative" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
     <style suppressHydrationWarning>{FONTS}</style>
-    <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
+    <div className="absolute inset-0 pointer-events-none select-none overflow-hidden" style={{zIndex:0}}>
       {/* Subtle diagonal rule grid */}
       <div className="absolute inset-0" style={{backgroundImage:'repeating-linear-gradient(135deg,rgba(0,107,182,0.04) 0px,rgba(0,107,182,0.04) 1px,transparent 1px,transparent 60px)'}}/>
       {/* Royal blue top glow */}
@@ -633,7 +637,7 @@ const Btn = memo(({onClick, children, color='gold', className='', disabled=false
   
   return (
     <button onClick={onClick} disabled={disabled || loading} style={goldStyle}
-      className={`${sm?'px-3 py-2 text-sm min-h-[36px]':'px-5 py-3 min-h-[44px]'} rounded-xl font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${C[color]??C.ghost} ${className}`}>
+      className={`${sm?'px-3 py-2 text-sm min-h-[44px]':'px-5 py-3 min-h-[44px]'} rounded-xl font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${C[color]??C.ghost} ${className}`}>
       {loading ? (
         <span className="flex items-center justify-center gap-2">
           <Spinner size={sm ? 14 : 16} color={spinnerColor} />
@@ -695,7 +699,7 @@ const ToastContainer = memo(({ toasts, onDismiss }: {
   if (toasts.length === 0) return null;
   
   return (
-    <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none" style={{maxWidth: '90vw', width: '400px'}}>
+    <div className="fixed right-4 z-50 space-y-2 pointer-events-none" style={{maxWidth: '90vw', width: '400px', bottom: 'calc(env(safe-area-inset-bottom) + 16px)'}}>
       {toasts.map(toast => {
         const colors = {
           success: { bg: 'bg-emerald-900/95', border: 'border-emerald-500/60', text: 'text-emerald-100', icon: '✓' },
@@ -1617,7 +1621,7 @@ function GolfScoringApp() {
 
   // ── Top Navigation Bar ────────────────────────────────────────────────────────
   const TopBar = ({title,back}:{title?:string;back?:()=>void}) => (
-    <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-white/10" style={{background:'rgba(6,14,28,0.85)',backdropFilter:'blur(12px)'}}>
+    <div className="flex items-center justify-between px-4 pb-3 border-b border-white/10" style={{background:'rgba(6,14,28,0.95)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',paddingTop:'calc(env(safe-area-inset-top) + 14px)'}}>
       <div className="flex items-center gap-3 min-w-0">
         {back ? (
           <button onClick={back} className="flex items-center gap-1 text-[#C9A227] text-sm font-semibold shrink-0">
@@ -1635,21 +1639,21 @@ function GolfScoringApp() {
           )}
         </div>
       </div>
-      <div className="flex gap-2 items-center shrink-0">
+      <div className="flex gap-1.5 items-center shrink-0">
         <Badge color={role==='admin'?'gold':'blue'}>{role==='admin'?'Admin':'Player'}</Badge>
         {role==='admin'&&screen!=='admin'&&(
-          <button onClick={()=>setScreen('admin')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">⚙</button>
+          <button onClick={()=>setScreen('admin')} className="text-white/40 hover:text-white text-sm min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/10 hover:border-white/30">⚙</button>
         )}
         {screen!=='standings'&&(
-          <button onClick={()=>setScreen('standings')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">📊</button>
+          <button onClick={()=>setScreen('standings')} className="text-white/40 hover:text-white text-sm min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/10 hover:border-white/30">📊</button>
         )}
         {screen!=='skins'&&(
-          <button onClick={()=>setScreen('skins')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">💰</button>
+          <button onClick={()=>setScreen('skins')} className="text-white/40 hover:text-white text-sm min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/10 hover:border-white/30">💰</button>
         )}
         {screen!=='tournament'&&(
-          <button onClick={()=>setScreen('tournament')} className="text-white/40 hover:text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 hover:border-white/30">📅</button>
+          <button onClick={()=>setScreen('tournament')} className="text-white/40 hover:text-white text-sm min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/10 hover:border-white/30">📅</button>
         )}
-        <button onClick={logout} className="text-white/30 hover:text-red-400 p-1.5 rounded-lg border border-white/10 hover:border-red-400/40">
+        <button onClick={logout} className="text-white/30 hover:text-red-400 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/10 hover:border-red-400/40">
           <LogOut className="w-3.5 h-3.5"/>
         </button>
       </div>
@@ -1662,7 +1666,7 @@ function GolfScoringApp() {
   if (screen==='login') {
     return (
       <BG>
-      <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5 safe-top safe-bottom">
+      <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5" style={{paddingTop:'calc(env(safe-area-inset-top) + 20px)',paddingBottom:'calc(env(safe-area-inset-bottom) + 20px)'}}>
         {/* Hero Header */}
         <div className="text-center mb-8">
           {/* Logo with gold glow ring */}
@@ -2195,7 +2199,7 @@ function GolfScoringApp() {
       ];
 
       const PairingPicker = ({pk,label,pool,isT1,oppPk}:{pk:string;label:string;pool:Player[];isT1:boolean;oppPk:string}) => (
-        <div className={`p-3 rounded-xl border-2 ${isT1?'card-blue':'card-red'}`}>
+        <div className={`p-3 rounded-xl ${isT1?'card-blue':'card-red'}`} style={{borderWidth:'2px'}}>
           <div className={`text-xs font-bold mb-2 tracking-wider ${isT1?'text-blue-300':'text-red-300'}`}>{label}</div>
           {isSgl?(
             <select value={m.pairings[pk]?.[0]??''} onChange={e=>setMatchPairing(pk,0,e.target.value)}
@@ -2243,7 +2247,7 @@ function GolfScoringApp() {
                 </div>
               )}
             </div>
-            <div className="flex gap-2 items-center flex-wrap justify-end">
+            <div className="flex gap-2 items-center flex-nowrap justify-end shrink-0">
               {role==='admin'&&!m.completed&&(
                 <button onClick={()=>toggleExpanded(m.id)} className="text-white/40 hover:text-white text-xs font-bold border border-white/10 px-2.5 py-1.5 rounded-lg">
                   {isExpanded?'▲':'▼ Edit'}
@@ -2363,7 +2367,7 @@ function GolfScoringApp() {
       const fmt = FORMATS[f.format];
       const pts = fmt.pointsPerMatchup * fmt.numMatchups * (f.holes===18?2:1);
       return (
-        <div className="p-4 rounded-2xl card-dark-accent rounded-2xl">
+        <div className="p-4 rounded-2xl card-dark-accent">
           <div className="font-bebas font-bold text-[#C9A227] mb-3 text-lg">New Match</div>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Sel label="Format" value={f.format} onChange={v=>setF(x=>({...x,format:v}))}
@@ -2420,11 +2424,11 @@ function GolfScoringApp() {
               <div className="font-bebas font-bold text-white text-2xl">{possiblePts}</div>
               <div className="text-xs text-[#C9A227]/70">Win at {toWin.toFixed(1)}</div>
             </Card>
-            <Card className="p-4 text-center card-red">
+            <div className="p-4 rounded-2xl text-center card-red">
               <div className="font-bebas font-bold text-red-300 text-5xl leading-none">{t2pts}</div>
               <div className="font-bold text-red-200 text-sm mt-1 truncate">{tData?.teamNames?.team2??'Team 2'}</div>
               {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
-            </Card>
+            </div>
           </div>
 
           {/* Matches */}
@@ -2467,7 +2471,7 @@ function GolfScoringApp() {
               const allIds = Object.values(vm.pairings||{}).filter(Array.isArray).flat().filter(Boolean);
               return (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{background:'rgba(0,0,0,0.85)'}} onClick={()=>setViewingMatchId(null)}>
-                  <div className="w-full sm:max-w-4xl rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto" style={{background:'#0D1B2A',border:'1px solid rgba(255,255,255,0.1)'}} onClick={e=>e.stopPropagation()}>
+                  <div className="w-full sm:max-w-4xl rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto" style={{background:'#0D1B2A',border:'1px solid rgba(255,255,255,0.1)',paddingBottom:'env(safe-area-inset-bottom)'}} onClick={e=>e.stopPropagation()}>
                     <div className="p-4 border-b border-white/10 sticky top-0 flex items-center justify-between" style={{background:'#0D1B2A'}}>
                       <div>
                         <div className="font-bebas font-bold text-white text-lg">{vfmt.name} · {vm.startHole===1?'Front':'Back'} 9</div>
@@ -2728,19 +2732,20 @@ function GolfScoringApp() {
           {isScramble?(
             <div>
               <div className="text-xs text-white/30 mb-2 font-bold tracking-wider uppercase">Team Score</div>
-              <div className="flex gap-2 flex-wrap">
+              <div className="grid grid-cols-5 gap-2">
                 {[1,2,3,4,5,6,7,8,9,10].map(n=>{
                   const par = hd?.par ?? 4;
                   const diff = n - par;
                   const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                   return (
                     <button key={n} onClick={()=>ids.forEach(id=>setScore(id,currentHole,n))}
-                      className={`w-12 h-12 rounded-xl font-bebas font-bold text-lg border-2 transition-all ${teamScore===n?'border-yellow-400 scale-110':'border-white/10 hover:border-white/30'} ${relColor}`}
+                      className={`h-12 rounded-xl font-bebas font-bold text-lg border-2 transition-all ${teamScore===n?'border-yellow-400 scale-105':'border-white/10'} ${relColor}`}
                       style={{background:teamScore===n?'rgba(201,162,39,0.3)':'rgba(255,255,255,0.07)'}}>
                       {n}
                     </button>
                   );
                 })}
+              </div>
               </div>
             </div>
           ):(
@@ -2775,14 +2780,14 @@ function GolfScoringApp() {
                         🏆 {playerSkinStrokes > 0 ? `Skin hdcp −${playerSkinStrokes}` : 'No skin stroke'}
                       </span>
                     </div>
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="grid grid-cols-5 gap-2">
                       {[1,2,3,4,5,6,7,8,9,10].map(n=>{
                         const par = hd?.par ?? 4;
                         const diff = n - par;
                         const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                         return (
                           <button key={n} onClick={()=>setScore(id,currentHole,n)}
-                            className={`w-12 h-12 rounded-xl font-bebas font-bold text-lg border-2 transition-all active:scale-95 ${sc===n?'border-yellow-400 scale-105':'border-white/10 hover:border-white/30'} ${relColor}`}
+                            className={`h-12 rounded-xl font-bebas font-bold text-lg border-2 transition-all active:scale-95 ${sc===n?'border-yellow-400 scale-105':'border-white/10'} ${relColor}`}
                             style={{background:sc===n?'rgba(201,162,39,0.3)':'rgba(255,255,255,0.07)'}}>
                             {n}
                           </button>
@@ -2806,8 +2811,8 @@ function GolfScoringApp() {
     return (
       <BG>
         {/* Hole Header */}
-        <div className="sticky top-0 z-20 border-b border-white/10" style={{background:'rgba(11,22,40,0.97)'}}>
-          <div className="flex items-center justify-between px-4 pt-3 pb-2">
+        <div className="sticky top-0 z-20 border-b border-white/10" style={{background:'rgba(11,22,40,0.98)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)'}}>
+          <div className="flex items-center justify-between px-4 pb-2" style={{paddingTop:'calc(env(safe-area-inset-top) + 12px)'}}>
             <button onClick={()=>{setScreen('tournament');if(editingScores)setEditingScores(false);}}
               className="flex items-center gap-1 text-yellow-400 text-sm font-bold">
               <ChevronLeft className="w-4 h-4"/>Schedule
@@ -2845,7 +2850,8 @@ function GolfScoringApp() {
               const bg=scored?(wins.team1>wins.team2?'bg-blue-600 text-white':wins.team2>wins.team1?'bg-red-600 text-white':'bg-white/20 text-white'):'bg-white/5 text-white/40';
               return (
                 <button key={mh} onClick={()=>setCurrentHole(mh)}
-                  className={`flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all ${bg} ${currentHole===mh?'ring-2 ring-yellow-400 ring-offset-1 ring-offset-transparent':''}`}>
+                  className={`flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all ${bg}`}
+                  style={currentHole===mh?{outline:'2px solid #C9A227',outlineOffset:'2px'}:{}}>
                   <div className="font-bebas font-bold text-base leading-none">{ah}</div>
                   {hd2&&<div className="text-xs opacity-60 leading-none">P{hd2.par}</div>}
                 </button>
@@ -2862,7 +2868,7 @@ function GolfScoringApp() {
               <div className="text-xs font-bold text-white/30 tracking-widest uppercase mb-2.5">
                 Through {runningHolesCount} hole{runningHolesCount!==1?'s':''} · net vs par
               </div>
-              <div className={`grid gap-2 ${allScoringIds.length<=4?'grid-cols-4':'grid-cols-4'}`}>
+              <div className={`grid gap-3 ${allScoringIds.length<=4?'grid-cols-4':'grid-cols-4'}`}>
                 {allScoringIds.map(id=>{
                   const p2=players.find(x=>x.id===id);
                   const net=runningNetVsPar[id]??0;
@@ -3039,7 +3045,7 @@ function GolfScoringApp() {
         <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
 
           {/* Championship Score Display */}
-          <div className="relative rounded-3xl overflow-hidden p-6 card-dark glow-blue border border-white/15">
+          <div className="relative rounded-3xl overflow-hidden p-6 card-dark glow-blue">
             <div className="absolute inset-0 opacity-5 flex items-center justify-center">
               <div className="text-blue-600"><BlockW size={180}/></div>
             </div>
