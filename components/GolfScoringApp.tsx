@@ -1742,9 +1742,123 @@ function GolfScoringApp() {
   // GLOSSARY SCREEN - Temporarily disabled due to hydration issues
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='glossary') {
-    // Redirect back to main screen
-    setScreen(tData ? 'tournament' : 'login');
-    return null;
+    return (
+      <BG>
+        <TopBar title="Game Format Guide" back={()=>setScreen(tData?'tournament':'login')}/>
+        <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
+
+          {/* What ★ means */}
+          <div className="rounded-2xl border border-yellow-500/30 p-4" style={{background:'rgba(201,162,39,0.08)'}}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-yellow-400 font-bold text-xl">★</span>
+              <span className="font-bebas font-bold text-white text-xl">What does ★ mean?</span>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-3">
+              A ★ means you receive a <span className="text-white font-bold">handicap stroke on that hole</span> — your gross score is reduced by 1 to get your net score. Strokes are assigned starting on the hardest holes (Rank 1 = hardest, Rank 18 = easiest). If your stroke allowance is 5, you receive strokes on the 5 hardest holes.
+            </p>
+            <div className="text-xs text-white/40 bg-white/5 rounded-xl p-3 leading-relaxed">
+              <span className="text-white/60 font-bold">Example:</span> Gibbs (HC 17) vs Ryan (HC 10) in Singles → difference = 7 strokes → Gibbs gets ★ on the 7 hardest holes. On a Rank-3 hole, Gibbs shoots 5 gross → counts as 4 net.
+            </div>
+          </div>
+
+          {/* Skins */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">🏆</span>
+              <span className="font-bebas font-bold text-white text-xl">How Skins Work</span>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-2">
+              All pairings compete for a skin on every hole. The pairing (or player in Best Ball / Singles) with the <span className="text-white">unique lowest net score</span> wins that hole's skin. If two or more tie for best, no skin is awarded — it does not carry over.
+            </p>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Skins handicap strokes compare each pairing to the <span className="text-white">lowest-handicap pairing in the entire field</span>, not just their head-to-head opponent. That's why the skin stroke count shown (🏆 Skin hdcp −N) may differ from the match play stroke (★).
+            </p>
+          </div>
+
+          {/* Score colours */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="font-bebas font-bold text-white text-xl mb-3">Score Button Colours</div>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {([['text-yellow-400','Eagle or better (−2+)'],['text-red-300','Birdie (−1)'],['text-white','Par'],['text-blue-300','Bogey (+1)'],['text-blue-200','Double bogey or worse (+2+)']] as const).map(([c,l])=>(
+                <div key={l} className="flex items-center gap-2">
+                  <span className={`font-bebas font-black text-2xl leading-none ${c}`}>4</span>
+                  <span className="text-white/40 text-xs">{l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-xs font-bold text-white/25 tracking-widest uppercase px-1 pt-1">The 6 Game Formats</div>
+
+          {/* Modified Scramble */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="font-bebas font-bold text-white text-xl">Modified Scramble</span>
+              <Badge color="gold">0.5 pts/hole</Badge>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-2">All 4 pairings play a scramble — both partners hit, pick the best ball, repeat. The best net score among all 4 pairings wins the hole for their team. 0.5 pts to the winning team per hole.</p>
+            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: 35% of the lower player's course handicap + 15% of the higher player's, rounded.</div>
+          </div>
+
+          {/* Best Ball */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="font-bebas font-bold text-white text-xl">Best Ball</span>
+              <Badge color="gold">2 pts total</Badge>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-2">Everyone plays their own ball. Per pairing matchup, the best net score of the two players counts for the team. Two independent head-to-head matchups (Pairing 1 vs Pairing 1, Pairing 2 vs Pairing 2) — each worth 1 pt.</p>
+            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: Each player gets 90% of their course handicap. The lowest-handicap player across both pairings plays to scratch; others get strokes for 90% of the difference. Full handicap used for skins vs the whole field.</div>
+          </div>
+
+          {/* 2-Man Scramble */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="font-bebas font-bold text-white text-xl">2-Man Scramble</span>
+              <Badge color="gold">2 pts total</Badge>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-2">Both partners hit every shot, pick the best ball, and both play from there. Two head-to-head pairing matchups, 1 pt each. Net score per pairing wins the hole.</p>
+            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: 35% of lower + 15% of higher course handicap. Lower handicap pairing plays to scratch; other gets the difference in strokes.</div>
+          </div>
+
+          {/* Greensomes */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="font-bebas font-bold text-white text-xl">Greensomes</span>
+              <Badge color="gold">2 pts total</Badge>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-2">Both partners tee off, then the team picks the best drive. From there they alternate shots for the rest of the hole. Two head-to-head pairing matchups, 1 pt each.</p>
+            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: 60% of the lower handicap + 40% of the higher handicap, rounded.</div>
+          </div>
+
+          {/* Alternate Shot */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="font-bebas font-bold text-white text-xl">Alternate Shot</span>
+              <Badge color="gold">2 pts total</Badge>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-2">Partners take turns hitting every shot — one tees off on odd holes, the other on even. The toughest team format. Two head-to-head pairing matchups, 1 pt each.</p>
+            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: 50% of combined course handicaps per pairing, rounded.</div>
+          </div>
+
+          {/* Singles */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="font-bebas font-bold text-white text-xl">Singles</span>
+              <Badge color="gold">4 pts total</Badge>
+            </div>
+            <p className="text-white/60 text-sm leading-relaxed mb-2">4 individual 1v1 matchups — every player on the team competes. Play your own ball; lowest net score wins each hole. Each match is worth 1 pt.</p>
+            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: Full course handicap. Lower-handicap player plays to scratch; opponent receives strokes on the hardest holes equal to the full difference. Full handicap also used for skins vs the whole field.</div>
+          </div>
+
+          {/* Ryder Cup format */}
+          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
+            <div className="font-bebas font-bold text-white text-xl mb-2">Ryder Cup Match Play</div>
+            <p className="text-white/60 text-sm leading-relaxed">All formats use match play scoring — the team that wins more holes wins the match and earns the points. A tie (All Square after the final hole) splits the points evenly. First team to more than half the total available points wins the Warrior Cup.</p>
+          </div>
+
+        </div>
+      </BG>
+    );
   }
   if (!tData) return (
     <BG>
@@ -2479,6 +2593,48 @@ function GolfScoringApp() {
     const matchPairs = getMatchupPairs(m.format);
     const globalSkinWinner = calcGlobalSkinsForHole(actualHoleNum, allMatches, combinedAllScores, getTeeForMatch, players);
 
+    // ── Running round stats (net vs par through holes with scores entered) ──────
+    const allScoringIds = Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean) as string[];
+    const runningNetVsPar: Record<string,number> = {};
+    allScoringIds.forEach(id=>{runningNetVsPar[id]=0;});
+    let runningHolesCount = 0;
+    for (let h=1; h<=m.holes; h++) {
+      const ah2=h+(m.startHole-1);
+      const hd2=matchTee?.holes.find(x=>x.h===ah2);
+      if (!hd2) continue;
+      const rank2=hd2.rank;
+      const hasScore=allScoringIds.some(id=>localScores[id]?.[h-1]!=null);
+      if (!hasScore) continue;
+      runningHolesCount=h;
+      for (const pk2 of Object.keys(m.pairings??{})) {
+        const pIds2=((m.pairings??{})[pk2]??[]).filter(Boolean) as string[];
+        if (!pIds2.length) continue;
+        if (m.format==='bestball') {
+          const oppPk2=pk2.startsWith('t1')?(pk2==='t1p1'?'t2p1':'t2p2'):(pk2==='t2p1'?'t1p1':'t1p2');
+          const pSt2=matchTee?bestBallStrokes(m,pk2,oppPk2,rank2,matchTee,players):{};
+          for (const id of pIds2){const sc=localScores[id]?.[h-1];if(sc==null)continue;runningNetVsPar[id]=(runningNetVsPar[id]??0)+(sc-(pSt2[id]??0))-hd2.par;}
+        } else if (m.format==='singles') {
+          const oppPk2=pk2.startsWith('t1')?pk2.replace('t1','t2'):pk2.replace('t2','t1');
+          const{t1:st1,t2:st2}=matchplayStrokes(m.pairingHcps[pk2]??0,m.pairingHcps[oppPk2]??0,rank2);
+          const myStrk2=pk2.startsWith('t1')?st1:st2;
+          for (const id of pIds2){const sc=localScores[id]?.[h-1];if(sc==null)continue;runningNetVsPar[id]=(runningNetVsPar[id]??0)+(sc-myStrk2)-hd2.par;}
+        } else {
+          let matchStrk2=0;
+          if (['scramble','greensomes','alternateshot'].includes(m.format)){
+            const oppPk2=pk2.startsWith('t1')?(pk2==='t1p1'?'t2p1':'t2p2'):(pk2==='t2p1'?'t1p1':'t1p2');
+            const{t1:st1,t2:st2}=matchplayStrokes(m.pairingHcps[pk2]??0,m.pairingHcps[oppPk2]??0,rank2);
+            matchStrk2=pk2.startsWith('t1')?st1:st2;
+          } else {
+            matchStrk2=skinsStrokes(m.pairingHcps,rank2)[pk2]??0;
+          }
+          const teamRaw=localScores[pIds2[0]]?.[h-1];
+          if (teamRaw==null) continue;
+          const netDiff=(teamRaw-matchStrk2)-hd2.par;
+          for (const id of pIds2){runningNetVsPar[id]=(runningNetVsPar[id]??0)+netDiff;}
+        }
+      }
+    }
+
     const PairEntry = ({pk}:{pk:string}) => {
       const ids=(m.pairings[pk]??[]).filter(Boolean);
       const isT1=pk.startsWith('t1');
@@ -2532,8 +2688,8 @@ function GolfScoringApp() {
                 <div className={`font-bebas font-bold text-lg leading-tight break-words ${isT1?'text-blue-200':'text-red-200'}`}>
                   {names.join(' & ')}
                   {m.format==='modifiedscramble'
-                    ? skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])}</span>
-                    : !fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)}</span>
+                    ? skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])} stroke{skinSt[pk]>1?'s':''} this hole</span>
+                    : !fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)} stroke{myStrokes>1?'s':''} this hole</span>
                   }
                 </div>
               )}
@@ -2560,7 +2716,7 @@ function GolfScoringApp() {
                       ? <span className="whitespace-nowrap"> vs all 4 · Rank {rank}</span>
                       : !fmt.perHole&&<span className="whitespace-nowrap"> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</span>
                     }
-                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Skin +{skinSt[pk]}</span>}
+                    {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Skin hdcp +{skinSt[pk]}</span>}
                   </span>
                 )}
               </div>
@@ -2614,9 +2770,9 @@ function GolfScoringApp() {
                   <div key={id}>
                     <div className="text-xs text-white/40 mb-2 font-bold tracking-wider flex items-center gap-2 flex-wrap">
                       <span className="truncate">{p?.name?.toUpperCase()}</span>
-                      {hasStroke && <span className="text-yellow-400 whitespace-nowrap">★ Match stroke</span>}
-                      <span className={`whitespace-nowrap ${playerSkinStrokes > 0 ? 'text-yellow-300' : 'text-white/25'}`}>
-                        🏆 {playerSkinStrokes > 0 ? `Skin −${playerSkinStrokes}` : 'Skin (no stroke)'}
+                      {hasStroke && <span className="text-yellow-400 whitespace-nowrap">★ stroke on this hole</span>}
+                      <span className={`whitespace-nowrap ${playerSkinStrokes > 0 ? 'text-yellow-300' : 'text-white/20'}`}>
+                        🏆 {playerSkinStrokes > 0 ? `Skin hdcp −${playerSkinStrokes}` : 'No skin stroke'}
                       </span>
                     </div>
                     <div className="flex gap-2 flex-wrap">
@@ -2699,6 +2855,58 @@ function GolfScoringApp() {
         </div>
 
         <div className="max-w-2xl mx-auto p-4 space-y-3 pb-8 safe-bottom">
+
+          {/* ── Running Round Score ─────────────────────────────────────── */}
+          {runningHolesCount>0&&(
+            <div className="rounded-2xl border border-white/10 p-3" style={{background:'rgba(255,255,255,0.04)'}}>
+              <div className="text-xs font-bold text-white/30 tracking-widest uppercase mb-2.5">
+                Through {runningHolesCount} hole{runningHolesCount!==1?'s':''} · net vs par
+              </div>
+              <div className={`grid gap-2 ${allScoringIds.length<=4?'grid-cols-4':'grid-cols-4'}`}>
+                {allScoringIds.map(id=>{
+                  const p2=players.find(x=>x.id===id);
+                  const net=runningNetVsPar[id]??0;
+                  const isT1Pl=Object.entries(m.pairings??{}).some(([k,v])=>k.startsWith('t1')&&(v as string[]).includes(id));
+                  const netColor=net<0?'text-red-300':net===0?'text-white/70':'text-blue-300';
+                  return (
+                    <div key={id} className="text-center">
+                      <div className={`text-xs font-bold truncate mb-0.5 ${isT1Pl?'text-blue-400/70':'text-red-400/70'}`}>{p2?.name??'?'}</div>
+                      <div className={`font-bebas font-black text-2xl leading-none ${netColor}`}>
+                        {net<0?net:net===0?'E':`+${net}`}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {(m.format==='bestball'||m.format==='singles')&&(
+                <div className="border-t border-white/10 mt-2.5 pt-2.5 space-y-1.5">
+                  {matchPairs.map(([a,b],i)=>{
+                    let pT1=0,pT2=0;
+                    for(let h=1;h<=runningHolesCount;h++){
+                      const res2=calcHoleResults(m,h,localScores,matchTee);
+                      const mr=res2?.matchupResults?.find(r=>r.a===a&&r.b===b);
+                      if(!mr||mr.winner==null)continue;
+                      if(mr.winner==='t1p')pT1++;else if(mr.winner==='t2p')pT2++;
+                    }
+                    const pLead=Math.abs(pT1-pT2),pRem=m.holes-runningHolesCount;
+                    let pLabel='AS';
+                    if(pT1>pT2)pLabel=(pLead>pRem&&pRem>=0)?`${pLead}&${pRem}`:`${pLead}UP`;
+                    else if(pT2>pT1)pLabel=(pLead>pRem&&pRem>=0)?`${pLead}&${pRem}`:`${pLead}DN`;
+                    const aName=(m.pairings[a]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join('/');
+                    const bName=(m.pairings[b]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join('/');
+                    return (
+                      <div key={i} className="flex items-center justify-between text-xs gap-1">
+                        <span className="text-blue-400/70 truncate" style={{maxWidth:'38%'}}>{aName||'TBD'}</span>
+                        <span className={`font-bebas font-bold text-base px-1 shrink-0 ${pT1>pT2?'text-blue-300':pT2>pT1?'text-red-300':'text-white/40'}`}>{pLabel}</span>
+                        <span className="text-red-400/70 truncate text-right" style={{maxWidth:'38%'}}>{bName||'TBD'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Hole result indicators */}
           {holeRes?.matchupResults?.some(r=>r.winner!=null)&&(
             <div className="space-y-1.5">
