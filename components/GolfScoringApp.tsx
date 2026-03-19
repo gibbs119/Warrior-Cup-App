@@ -1085,10 +1085,12 @@ function GolfScoringApp() {
   const saveTournament = async (data: Tournament, id=tournId) => { await set(ref(db,`tournaments/${id}`),data); };
   const loadMatchScores = async (mid: string) => { const s=await get(ref(db,`scores/${tournId}/${mid}`)); return (s.val() as Record<string,(number|null)[]>) ?? {}; };
   
-  // FIXED: Use update() instead of set() to prevent overwriting concurrent score updates
+  // Use set() (not update()) so that null/cleared scores are written atomically.
+  // update() treats null values as deletions, causing cleared scores to silently
+  // persist in Firebase. set() replaces the entire match-scores object cleanly.
   const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => { 
     try {
-      await update(ref(db,`scores/${tournId}/${mid}`), scores);
+      await set(ref(db,`scores/${tournId}/${mid}`), scores);
     } catch (err) {
       console.error('Error saving scores:', err);
       throw err;
@@ -1787,8 +1789,9 @@ function GolfScoringApp() {
         const fmt = FORMATS[m.format];
         if (!fmt) continue;
 
-        // Normalise scores so downstream functions always receive real arrays
-        const rawScores = allMatchScores[m.id] ?? {};
+        // For the active match use localScores (reflects clears immediately,
+        // no Firebase round-trip needed). For other matches use allMatchScores.
+        const rawScores = m.id === activeMatchId ? localScores : (allMatchScores[m.id] ?? {});
         const scores: Record<string,(number|null)[]> = {};
         for (const [pid, val] of Object.entries(rawScores)) {
           scores[pid] = toArray(val, m.holes);
@@ -1881,7 +1884,7 @@ function GolfScoringApp() {
       // If anything unexpected goes wrong, fall back to stored stats silently
       return tData?.players ?? [];
     }
-  }, [tData, allMatchScores]);
+  }, [tData, allMatchScores, localScores, activeMatchId]);
 
   // ── Top Navigation Bar ────────────────────────────────────────────────────────
   const TopBar = ({title,back}:{title?:string;back?:()=>void}) => (
@@ -3617,10 +3620,11 @@ function GolfScoringApp() {
 
       // Include in-progress matches that have at least one score entered.
       // Firebase may return score arrays as objects — check both forms safely.
+      // For the active match, check localScores directly.
       const hasScore = (matchId: string): boolean => {
-        const ms = allMatchScores[matchId];
-        if (!ms || typeof ms !== 'object') return false;
-        return Object.values(ms).some(v => {
+        const src = matchId === activeMatchId ? localScores : (allMatchScores[matchId] ?? {});
+        if (!src || typeof src !== 'object') return false;
+        return Object.values(src).some((v: unknown) => {
           if (Array.isArray(v)) return v.some(x => x != null);
           if (v && typeof v === 'object') return Object.values(v as Record<string,unknown>).some(x => typeof x === 'number');
           return false;
@@ -3640,7 +3644,10 @@ function GolfScoringApp() {
         : Array.from({length:9}, (_,i) => i+1);
 
       const courseScores: Record<string, Record<string,(number|null)[]>> = {};
-      scoredCourseMatches.forEach(m => { courseScores[m.id] = allMatchScores[m.id] ?? {}; });
+      scoredCourseMatches.forEach(m => {
+        // Use localScores for the active match so cleared holes reflect immediately
+        courseScores[m.id] = m.id === activeMatchId ? localScores : (allMatchScores[m.id] ?? {});
+      });
 
       const holeResults = displayHoles.map(hole => ({
         hole,
