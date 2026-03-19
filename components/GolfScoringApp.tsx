@@ -857,6 +857,7 @@ function GolfScoringApp() {
   const [scoringLoading, setScoringLoading] = useState(false);
   const [enteringScores, setEnteringScores] = useState(false);
   const [showLiveCard, setShowLiveCard]     = useState(false);
+  const [autoRestoring, setAutoRestoring]   = useState(true); // true while attempting auto-restore on mount
   
   // ── Toast Notifications ──────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<Array<{id: string; message: string; type: 'success' | 'error' | 'info'}>>([]);
@@ -871,6 +872,43 @@ function GolfScoringApp() {
   
   const dismissToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // ── Session Persistence ───────────────────────────────────────────────────────
+  const SESSION_KEY = 'wc_session';
+  const saveSession = (tid: string, pc: string, r: string) => {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify({tournId:tid, passcode:pc, role:r})); } catch {}
+  };
+  const clearSession = () => { try { localStorage.removeItem(SESSION_KEY); } catch {} };
+  const loadSession = (): {tournId:string;passcode:string;role:string}|null => {
+    try { const s = localStorage.getItem(SESSION_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+  };
+
+  // On mount: attempt silent auto-restore from cached session
+  useEffect(() => {
+    const session = loadSession();
+    if (!session) { setAutoRestoring(false); return; }
+    (async () => {
+      try {
+        const data = await loadTournament(session.tournId);
+        if (!data) { clearSession(); setAutoRestoring(false); return; }
+        // Verify passcode still valid
+        const isAdmin = session.role === 'admin';
+        const pcOk = isAdmin ? session.passcode === data.adminPasscode : session.passcode === data.passcode;
+        if (!pcOk) { clearSession(); setAutoRestoring(false); return; }
+        // Restore session — go straight in
+        setTournId(session.tournId);
+        setPasscode(session.passcode);
+        setRole(session.role);
+        setTData(data);
+        setScreen(isAdmin ? 'admin' : 'tournament');
+      } catch {
+        clearSession();
+      } finally {
+        setAutoRestoring(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   const toggleExpanded = useCallback((mid: string) => 
@@ -1066,7 +1104,9 @@ function GolfScoringApp() {
         matches:[], matchResults:[], createdAt:new Date().toISOString(),
       };
       await saveTournament(data, id);
-      setTournId(id); setTData(data); setPasscode(adminPc); setRole('admin'); setScreen('admin');
+      setTournId(id); setTData(data); setPasscode(adminPc); setRole('admin');
+      saveSession(id, adminPc, 'admin');
+      setScreen('admin');
     } catch (err) {
       console.error('Failed to create tournament:', err);
       showToast('Error creating tournament. Please try again.', 'error');
@@ -1099,6 +1139,7 @@ function GolfScoringApp() {
     if (!asAdmin && passcode!==data.passcode) { setLoginErr('Wrong passcode.'); setLoading(false); return; }
     setTData(data); setRole(asAdmin?'admin':'player');
     setTournId(tournId.toUpperCase().trim());
+    saveSession(tournId.toUpperCase().trim(), passcode, asAdmin?'admin':'player');
     setScreen(asAdmin?'admin':'tournament'); setLoading(false);
   };
 
@@ -1647,7 +1688,7 @@ function GolfScoringApp() {
     setScreen('admin');
   };
 
-  const logout = () => { unsubRef.current?.(); setRole(null);setTData(null);setTournId('');setPasscode('');setEditingScores(false);setScreen('login'); };
+  const logout = () => { unsubRef.current?.(); clearSession(); setRole(null);setTData(null);setTournId('');setPasscode('');setEditingScores(false);setScreen('login'); };
 
   const tee=getTee();
   const t1pts=teamPoints('team1');
@@ -1699,7 +1740,29 @@ function GolfScoringApp() {
   // ══════════════════════════════════════════════════════════════════════════════
   // LOGIN SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
+  // While silently restoring a cached session, show the logo splash — not the login form
+  if (autoRestoring) {
+    return (
+      <BG>
+        <div className="flex flex-col items-center justify-center min-h-[100dvh]" style={{paddingTop:'env(safe-area-inset-top)'}}>
+          <div className="relative mb-6">
+            <div className="absolute inset-0 rounded-full blur-2xl opacity-40" style={{background:'radial-gradient(circle,#C9A227,transparent 70%)'}}/>
+            <div className="relative z-10 rounded-full p-1" style={{background:'linear-gradient(135deg,#B8860B,#C9A227,#E5C04A,#C9A227)',boxShadow:'0 0 40px rgba(201,162,39,0.4)'}}>
+              <div className="rounded-full overflow-hidden" style={{width:90,height:90,background:'#0A1628'}}>
+                <BlockW size={90}/>
+              </div>
+            </div>
+          </div>
+          <div className="font-bebas text-white tracking-widest mb-1" style={{fontSize:'2.4rem',lineHeight:'1'}}>WARRIOR CUP</div>
+          <div className="text-white/30 text-xs tracking-[0.3em] uppercase mb-8">Ryder Cup Style Golf</div>
+          <Spinner size={24} color="gold"/>
+        </div>
+      </BG>
+    );
+  }
+
   if (screen==='login') {
+    const savedSession = loadSession();
     return (
       <BG>
       <div className="flex flex-col items-center justify-center min-h-[100dvh] p-5" style={{paddingTop:'calc(env(safe-area-inset-top) + 20px)',paddingBottom:'calc(env(safe-area-inset-bottom) + 20px)'}}>
@@ -1733,7 +1796,43 @@ function GolfScoringApp() {
         </div>
 
         <div className="w-full max-w-sm space-y-3">
-          {/* Join Form */}
+
+          {/* ── Saved Session Resume Card ─────────────────────────────── */}
+          {savedSession && (
+            <div className="rounded-2xl p-4 card-dark-accent">
+              <div className="text-xs font-bold text-[#C9A227]/70 tracking-widest uppercase mb-3">Last Session</div>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <div className="text-white font-bold text-base leading-tight">{savedSession.tournId}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge color={savedSession.role==='admin'?'gold':'blue'}>{savedSession.role==='admin'?'Admin':'Player'}</Badge>
+                  </div>
+                </div>
+                <Btn color="gold" onClick={async()=>{
+                  setLoading(true);
+                  try {
+                    const data = await loadTournament(savedSession.tournId);
+                    if (!data) { clearSession(); setLoginErr('Tournament no longer found. Please join manually.'); setLoading(false); return; }
+                    const isAdmin = savedSession.role==='admin';
+                    const pcOk = isAdmin ? savedSession.passcode===data.adminPasscode : savedSession.passcode===data.passcode;
+                    if (!pcOk) { clearSession(); setLoginErr('Session expired. Please log in again.'); setLoading(false); return; }
+                    setTournId(savedSession.tournId); setPasscode(savedSession.passcode); setRole(savedSession.role); setTData(data);
+                    setScreen(isAdmin?'admin':'tournament');
+                  } catch { setLoginErr('Connection error. Please try again.'); }
+                  finally { setLoading(false); }
+                }} loading={loading} disabled={loading} className="flex items-center gap-2 shrink-0">
+                  Continue →
+                </Btn>
+              </div>
+              <button onClick={()=>{ clearSession(); window.location.reload(); }}
+                className="text-xs text-white/30 hover:text-white/60 underline underline-offset-2">
+                Switch to a different tournament
+              </button>
+            </div>
+          )}
+
+          {/* ── Manual Join Form (hidden if saved session present) ──── */}
+          {!savedSession && (<>
           <div className="rounded-2xl p-5 space-y-4 card-dark glow-blue">
             <Inp label="Tournament ID" value={tournId} onChange={v=>setTournId(v.toUpperCase())} placeholder="e.g. ABC123" onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
             <Inp label="Passcode" value={passcode} onChange={setPasscode} placeholder="Enter passcode" onKeyDown={e=>e.key==='Enter'&&joinTournament(false)}/>
@@ -1764,13 +1863,13 @@ function GolfScoringApp() {
             <Trophy className="w-5 h-5"/>
             <span className="font-bebas text-xl tracking-wider">Create Warrior Cup</span>
           </Btn>
+          </>)}
 
-          {/* Game Format Guide - Temporarily disabled */}
-          {/* <Btn color="ghost" onClick={()=>setScreen('glossary')} className="w-full flex items-center justify-center gap-2">
-            <BookOpen className="w-4 h-4"/>
-            <span>Game Format Guide</span>
-          </Btn> */}
-
+          {loginErr && savedSession && (
+            <div className="text-sm text-red-300 font-semibold rounded-xl p-3 border border-red-700/40 text-center" style={{background:'rgba(200,16,46,0.15)'}}>
+              ⚠ {loginErr}
+            </div>
+          )}
 
           <div className="text-center text-white/20 text-xs pt-1 tracking-[0.4em] font-bebas">GO BLUE</div>
         </div>
