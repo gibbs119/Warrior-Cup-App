@@ -907,30 +907,63 @@ function GolfScoringApp() {
     try { const s = localStorage.getItem(SESSION_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
   };
 
-  // On mount: attempt silent auto-restore from cached session
+  // On mount: attempt silent auto-restore from cached session.
+  // Uses normalizeTournament (same as the Firebase onValue listener) so the
+  // restored tData is identical to what a live subscription would produce —
+  // e.g. courses falls back to PRESET_COURSES not [], teamNames always present.
+  // An abort-on-unmount guard (cancelled flag) prevents stale setState calls if
+  // the component is torn down before the async Firebase read completes.
   useEffect(() => {
     const session = loadSession();
     if (!session) { setAutoRestoring(false); return; }
+
+    let cancelled = false;
+
     (async () => {
       try {
-        const data = await loadTournament(session.tournId);
-        if (!data) { clearSession(); setAutoRestoring(false); return; }
-        // Verify passcode still valid
+        const raw = await loadTournament(session.tournId);
+        if (cancelled) return;
+
+        if (!raw) {
+          // Tournament no longer exists in Firebase — stale session, drop it.
+          clearSession();
+          setAutoRestoring(false);
+          return;
+        }
+
+        // Normalise with the same function the Firebase listener uses so tData
+        // is consistent regardless of how we arrived at it.
+        const data = normalizeTournament(raw);
+
+        // Verify the cached passcode is still valid (admin may have rotated it).
         const isAdmin = session.role === 'admin';
-        const pcOk = isAdmin ? session.passcode === data.adminPasscode : session.passcode === data.passcode;
-        if (!pcOk) { clearSession(); setAutoRestoring(false); return; }
-        // Restore session — go straight in
+        const pcOk = isAdmin
+          ? session.passcode === data.adminPasscode
+          : session.passcode === data.passcode;
+
+        if (!pcOk) {
+          clearSession();
+          setAutoRestoring(false);
+          return;
+        }
+
+        if (cancelled) return;
+
+        // All checks passed — restore the session and navigate in.
         setTournId(session.tournId);
         setPasscode(session.passcode);
         setRole(session.role);
         setTData(data);
         setScreen(isAdmin ? 'admin' : 'tournament');
       } catch {
-        clearSession();
+        if (!cancelled) clearSession();
       } finally {
-        setAutoRestoring(false);
+        if (!cancelled) setAutoRestoring(false);
       }
     })();
+
+    // Cleanup: mark any in-flight async work as stale if the component unmounts.
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
@@ -1081,7 +1114,6 @@ function GolfScoringApp() {
     return () => { unsubRef.current?.(); };
   }, [tournId]); // intentionally only tournId — one subscription per session
 
-  const [scoresLoading, setScoresLoading] = useState(false);
 
   // ── Firebase CRUD ────────────────────────────────────────────────────────────
   // ─── Firebase Operations (Concurrent-Safe) ────────────────────────────────────
@@ -1117,12 +1149,25 @@ function GolfScoringApp() {
   const saveTournament = async (data: Tournament, id=tournId) => { await set(ref(db,`tournaments/${id}`),data); };
   const loadMatchScores = async (mid: string) => { const s=await get(ref(db,`scores/${tournId}/${mid}`)); return (s.val() as Record<string,(number|null)[]>) ?? {}; };
   
-  // Use set() (not update()) so that null/cleared scores are written atomically.
-  // update() treats null values as deletions, causing cleared scores to silently
-  // persist in Firebase. set() replaces the entire match-scores object cleanly.
+  // Per-player update: each player's score row is written to its own path so
+  // concurrent saves from different users never overwrite each other's data.
+  // e.g. User A saving {p1, p2} while User B saves {p3, p4} → Firebase merges
+  // them correctly; the last writer does NOT win for the other players' rows.
+  //
+  // Nulls inside a player's holes array are handled identically to the old set()
+  // approach: Firebase strips trailing/interior nulls from arrays, and they are
+  // recovered by the toArray() normalization on read. This is unchanged behaviour.
   const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => { 
     try {
-      await set(ref(db,`scores/${tournId}/${mid}`), scores);
+      if (!Object.keys(scores).length) return;
+      // Build { pid: holes[], ... } and write it with update() at the match path.
+      // update() only touches the listed player keys; all other players' rows are
+      // left completely untouched in Firebase.
+      const playerRows: Record<string, (number|null)[]> = {};
+      for (const [pid, holes] of Object.entries(scores)) {
+        playerRows[pid] = holes;
+      }
+      await update(ref(db, `scores/${tournId}/${mid}`), playerRows);
     } catch (err) {
       console.error('Error saving scores:', err);
       throw err;
@@ -3634,8 +3679,6 @@ function GolfScoringApp() {
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='skins') {
     if (!tData) return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
-    if (scoresLoading) return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center flex flex-col items-center gap-3 pt-16"><Spinner size={32} color="gold"/><div>Loading scores…</div></div></BG>;
-
     const courses    = tData.courses ?? [];
     const allMatches = tData.matches ?? [];
     const completedIds = new Set((tData.matchResults ?? []).map(r => r.matchId));
