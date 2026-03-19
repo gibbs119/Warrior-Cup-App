@@ -2527,9 +2527,14 @@ function GolfScoringApp() {
                 </div>
               ) : (
                 // Other formats: Show team name with team strokes
+                // Modified Scramble: all 4 pairings compete together, strokes = skinSt (relative to min)
+                // Other scramble/alt: head-to-head matchplay strokes
                 <div className={`font-bebas font-bold text-lg leading-tight break-words ${isT1?'text-blue-200':'text-red-200'}`}>
                   {names.join(' & ')}
-                  {!fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)}</span>}
+                  {m.format==='modifiedscramble'
+                    ? skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])}</span>
+                    : !fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)}</span>
+                  }
                 </div>
               )}
               <div className="text-xs text-white/30 mt-1">
@@ -2551,7 +2556,10 @@ function GolfScoringApp() {
                 ) : (
                   <span className="block">
                     <span className="whitespace-nowrap">HC {m.pairingHcps[pk]??0}</span>
-                    {!fmt.perHole&&<span className="whitespace-nowrap"> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</span>}
+                    {m.format==='modifiedscramble'
+                      ? <span className="whitespace-nowrap"> vs all 4 · Rank {rank}</span>
+                      : !fmt.perHole&&<span className="whitespace-nowrap"> vs {m.pairingHcps[oppPk]??0} · Rank {rank}</span>
+                    }
                     {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 whitespace-nowrap">Skin +{skinSt[pk]}</span>}
                   </span>
                 )}
