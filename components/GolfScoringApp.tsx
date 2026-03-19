@@ -1738,103 +1738,149 @@ function GolfScoringApp() {
   // tData.players[].stats only updates on finishMatch(). This memo adds live
   // in-progress contributions so every screen always reflects current scores.
   const livePlayerStats = useMemo(() => {
-    const players = tData?.players ?? [];
-    const completedMatchIds = new Set((tData?.matchResults ?? []).map(r => r.matchId));
-    const inProgressMatches = (tData?.matches ?? []).filter(m =>
-      !completedMatchIds.has(m.id) &&
-      Object.keys(allMatchScores[m.id] ?? {}).some(pid =>
-        (allMatchScores[m.id][pid] ?? []).some(v => v != null)
-      )
-    );
+    try {
+      const players = tData?.players ?? [];
+      const completedMatchIds = new Set((tData?.matchResults ?? []).map(r => r.matchId));
 
-    if (!inProgressMatches.length) return players;
+      // Safely check if a score object has any non-null entries.
+      // Firebase can return arrays as objects with numeric keys — handle both.
+      const hasAnyScore = (scoreObj: unknown): boolean => {
+        if (!scoreObj || typeof scoreObj !== 'object') return false;
+        return Object.values(scoreObj as Record<string,unknown>).some(v =>
+          Array.isArray(v) ? v.some(x => x != null) :
+          (v !== null && v !== undefined && typeof v === 'number')
+        );
+      };
 
-    // Accumulate live contributions per player from in-progress matches
-    const livePts:   Record<string,number> = {};
-    const liveNet:   Record<string,number> = {};
-    const liveSkins: Record<string,number> = {};
-    players.forEach(p => { livePts[p.id]=0; liveNet[p.id]=0; liveSkins[p.id]=0; });
-
-    for (const m of inProgressMatches) {
-      const tee2 = getTeeForMatch(m);
-      if (!tee2) continue;
-      const scores = allMatchScores[m.id] ?? {};
-      const fmt = FORMATS[m.format];
-      if (!fmt) continue;
-
-      // Skins — reuse calcMatchStatus which already handles global skins
-      const ms2 = calcMatchStatus(m, scores, tee2,
-        tData?.matches ?? [], allMatchScores, getTeeForMatch);
-      Object.entries(ms2.playerSkins).forEach(([id, s]) => {
-        if (id in liveSkins) liveSkins[id] += s;
+      const inProgressMatches = (tData?.matches ?? []).filter(m => {
+        if (completedMatchIds.has(m.id)) return false;
+        const matchScores = allMatchScores[m.id];
+        if (!matchScores) return false;
+        return hasAnyScore(matchScores);
       });
 
-      // Net-under-par per player
-      for (let h=1; h<=m.holes; h++) {
-        const ah = h + (m.startHole-1);
-        const hd2 = tee2.holes.find(x => x.h === ah);
-        if (!hd2) continue;
-        const skinSt2 = skinsStrokes(m.pairingHcps, hd2.rank);
-        for (const pk of Object.keys(m.pairings ?? {})) {
-          const pids = (m.pairings[pk] ?? []).filter(Boolean);
-          if (!pids.length) continue;
-          const raw = pairRawScore(m, pk, h, scores);
-          if (raw == null) continue;
-          const net = raw - (skinSt2[pk] || 0);
-          if (net < hd2.par) pids.forEach(id => { if (id in liveNet) liveNet[id]++; });
-        }
-      }
+      if (!inProgressMatches.length) return players;
 
-      // Points contributed — mirror finishMatch logic
-      const pairs = getMatchupPairs(m.format);
-      if (fmt.perHole) {
-        for (let h=1; h<=m.holes; h++) {
-          const res2 = calcHoleResults(m, h, scores, tee2);
-          const w = res2?.matchupResults[0]?.winner;
-          if (!w || w==='tie') continue;
-          const winPks = w==='t1p' ? ['t1p1','t1p2'] : ['t2p1','t2p2'];
-          const skinSt3 = skinsStrokes(m.pairingHcps, res2.rank ?? h);
-          const pairNets = winPks.map(pk => {
-            const r2 = pairRawScore(m, pk, h, scores);
-            return r2!=null ? {pk, net:r2-(skinSt3[pk]||0), ids:(m.pairings[pk]??[])} : null;
-          }).filter(Boolean) as {pk:string;net:number;ids:string[]}[];
-          const bestNet = Math.min(...pairNets.map(x=>x.net));
-          pairNets.filter(x=>x.net===bestNet).forEach(pair => {
-            const share = pair.ids.length ? 0.5/pairNets.filter(x=>x.net===bestNet).length/pair.ids.length : 0;
-            pair.ids.filter(Boolean).forEach(id => { if (id in livePts) livePts[id]+=share; });
+      // Normalise a Firebase score value to a JS array of (number|null)[]
+      // Firebase strips null-trailing entries and may return objects not arrays
+      const toArray = (val: unknown, len: number): (number|null)[] => {
+        if (Array.isArray(val)) return val as (number|null)[];
+        if (val && typeof val === 'object') {
+          const arr: (number|null)[] = Array(len).fill(null);
+          Object.entries(val as Record<string,unknown>).forEach(([k,v]) => {
+            const i = parseInt(k, 10);
+            if (!isNaN(i) && i < len) arr[i] = typeof v === 'number' ? v : null;
           });
+          return arr;
         }
-      } else {
-        for (const [a,b] of pairs) {
-          let at1=0,at2=0;
-          for (let h=1; h<=m.holes; h++) {
-            const res2 = calcHoleResults(m, h, scores, tee2);
-            const mr = res2?.matchupResults.find(x=>x.a===a&&x.b===b);
-            if (mr?.winner==='t1p') at1++; else if (mr?.winner==='t2p') at2++;
-          }
-          const pts = fmt.pointsPerMatchup;
-          const aIds = (m.pairings[a]??[]).filter(Boolean);
-          const bIds = (m.pairings[b]??[]).filter(Boolean);
-          if (at1>at2) aIds.forEach(id=>{ if(id in livePts) livePts[id]+=pts/aIds.length; });
-          else if (at2>at1) bIds.forEach(id=>{ if(id in livePts) livePts[id]+=pts/bIds.length; });
-          else {
-            aIds.forEach(id=>{ if(id in livePts) livePts[id]+=(pts/2)/aIds.length; });
-            bIds.forEach(id=>{ if(id in livePts) livePts[id]+=(pts/2)/bIds.length; });
-          }
-        }
-      }
-    }
+        return Array(len).fill(null);
+      };
 
-    return players.map(p => ({
-      ...p,
-      stats: {
-        matchesPlayed:    p.stats?.matchesPlayed  ?? 0,
-        matchesWon:       p.stats?.matchesWon     ?? 0,
-        pointsContributed: (p.stats?.pointsContributed ?? 0) + (livePts[p.id]   ?? 0),
-        netUnderPar:       (p.stats?.netUnderPar       ?? 0) + (liveNet[p.id]   ?? 0),
-        skinsWon:          (p.stats?.skinsWon           ?? 0) + (liveSkins[p.id] ?? 0),
+      const livePts:   Record<string,number> = {};
+      const liveNet:   Record<string,number> = {};
+      const liveSkins: Record<string,number> = {};
+      players.forEach(p => { livePts[p.id]=0; liveNet[p.id]=0; liveSkins[p.id]=0; });
+
+      for (const m of inProgressMatches) {
+        const tee2 = getTeeForMatch(m);
+        if (!tee2) continue;
+        const fmt = FORMATS[m.format];
+        if (!fmt) continue;
+
+        // Normalise scores so downstream functions always receive real arrays
+        const rawScores = allMatchScores[m.id] ?? {};
+        const scores: Record<string,(number|null)[]> = {};
+        for (const [pid, val] of Object.entries(rawScores)) {
+          scores[pid] = toArray(val, m.holes);
+        }
+
+        // Skins via calcMatchStatus
+        try {
+          const ms2 = calcMatchStatus(m, scores, tee2,
+            tData?.matches ?? [], {[m.id]: scores}, getTeeForMatch);
+          Object.entries(ms2.playerSkins).forEach(([id, s]) => {
+            if (id in liveSkins) liveSkins[id] += (s as number);
+          });
+        } catch { /* skip skins for this match on error */ }
+
+        // Net-under-par
+        for (let h=1; h<=m.holes; h++) {
+          try {
+            const ah = h + (m.startHole-1);
+            const hd2 = tee2.holes.find(x => x.h === ah);
+            if (!hd2) continue;
+            const skinSt2 = skinsStrokes(m.pairingHcps, hd2.rank);
+            for (const pk of Object.keys(m.pairings ?? {})) {
+              const pids = (m.pairings[pk] ?? []).filter(Boolean);
+              if (!pids.length) continue;
+              const raw = pairRawScore(m, pk, h, scores);
+              if (raw == null) continue;
+              const net = raw - (skinSt2[pk] || 0);
+              if (net < hd2.par) pids.forEach(id => { if (id in liveNet) liveNet[id]++; });
+            }
+          } catch { /* skip this hole */ }
+        }
+
+        // Points contributed
+        try {
+          const pairs = getMatchupPairs(m.format);
+          if (fmt.perHole) {
+            for (let h=1; h<=m.holes; h++) {
+              const res2 = calcHoleResults(m, h, scores, tee2);
+              const w = res2?.matchupResults?.[0]?.winner;
+              if (!w || w==='tie') continue;
+              const winPks = w==='t1p' ? ['t1p1','t1p2'] : ['t2p1','t2p2'];
+              const skinSt3 = skinsStrokes(m.pairingHcps, res2.rank ?? h);
+              const pairNets = winPks.map(pk => {
+                const r2 = pairRawScore(m, pk, h, scores);
+                return r2!=null ? {pk, net:r2-(skinSt3[pk]||0), ids:(m.pairings[pk]??[]).filter(Boolean)} : null;
+              }).filter(Boolean) as {pk:string;net:number;ids:string[]}[];
+              if (!pairNets.length) continue;
+              const bestNet = Math.min(...pairNets.map(x=>x.net));
+              const winners = pairNets.filter(x=>x.net===bestNet);
+              if (!winners.length) continue;
+              winners.forEach(pair => {
+                if (!pair.ids.length) return;
+                const share = 0.5 / winners.length / pair.ids.length;
+                pair.ids.forEach(id => { if (id in livePts) livePts[id]+=share; });
+              });
+            }
+          } else {
+            for (const [a,b] of pairs) {
+              let at1=0,at2=0;
+              for (let h=1; h<=m.holes; h++) {
+                const res2 = calcHoleResults(m, h, scores, tee2);
+                const mr = res2?.matchupResults?.find(x=>x.a===a&&x.b===b);
+                if (mr?.winner==='t1p') at1++; else if (mr?.winner==='t2p') at2++;
+              }
+              const pts = fmt.pointsPerMatchup;
+              const aIds = (m.pairings[a]??[]).filter(Boolean);
+              const bIds = (m.pairings[b]??[]).filter(Boolean);
+              if (at1>at2 && aIds.length) aIds.forEach(id=>{ if(id in livePts) livePts[id]+=pts/aIds.length; });
+              else if (at2>at1 && bIds.length) bIds.forEach(id=>{ if(id in livePts) livePts[id]+=pts/bIds.length; });
+              else {
+                if (aIds.length) aIds.forEach(id=>{ if(id in livePts) livePts[id]+=(pts/2)/aIds.length; });
+                if (bIds.length) bIds.forEach(id=>{ if(id in livePts) livePts[id]+=(pts/2)/bIds.length; });
+              }
+            }
+          }
+        } catch { /* skip pts for this match on error */ }
       }
-    }));
+
+      return players.map(p => ({
+        ...p,
+        stats: {
+          matchesPlayed:     p.stats?.matchesPlayed  ?? 0,
+          matchesWon:        p.stats?.matchesWon     ?? 0,
+          pointsContributed: (p.stats?.pointsContributed ?? 0) + (livePts[p.id]   ?? 0),
+          netUnderPar:       (p.stats?.netUnderPar       ?? 0) + (liveNet[p.id]   ?? 0),
+          skinsWon:          (p.stats?.skinsWon           ?? 0) + (liveSkins[p.id] ?? 0),
+        }
+      }));
+    } catch {
+      // If anything unexpected goes wrong, fall back to stored stats silently
+      return tData?.players ?? [];
+    }
   }, [tData, allMatchScores]);
 
   // ── Top Navigation Bar ────────────────────────────────────────────────────────
@@ -3569,12 +3615,19 @@ function GolfScoringApp() {
       );
       const completedCourseMatches = courseMatches.filter(m => completedIds.has(m.id));
 
-      // Include in-progress matches that have at least one score entered
+      // Include in-progress matches that have at least one score entered.
+      // Firebase may return score arrays as objects — check both forms safely.
+      const hasScore = (matchId: string): boolean => {
+        const ms = allMatchScores[matchId];
+        if (!ms || typeof ms !== 'object') return false;
+        return Object.values(ms).some(v => {
+          if (Array.isArray(v)) return v.some(x => x != null);
+          if (v && typeof v === 'object') return Object.values(v as Record<string,unknown>).some(x => typeof x === 'number');
+          return false;
+        });
+      };
       const scoredCourseMatches = courseMatches.filter(m =>
-        completedIds.has(m.id) ||
-        Object.values(allMatchScores[m.id] ?? {}).some((arr: any) =>
-          (arr as (number|null)[]).some((v: number|null) => v != null)
-        )
+        completedIds.has(m.id) || hasScore(m.id)
       );
       const inProgressCount = scoredCourseMatches.filter(m => !completedIds.has(m.id)).length;
 
