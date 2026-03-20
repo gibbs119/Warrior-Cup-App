@@ -1686,7 +1686,7 @@ function GolfScoringApp() {
       // Calculate skins - use global calculation if available
       if (useGlobalSkins) {
         const actualHole = m.startHole + h - 1;
-        const globalWinner = calcGlobalSkinsForHole(actualHole, allMatches, allScores, getTeeFunc, tData?.players);
+        const globalWinner = calcGlobalSkinsForHole(actualHole, [m], allScores, getTeeFunc, tData?.players);
         if (globalWinner && globalWinner.matchId === m.id) {
           // Determine points per player based on format
           // Team formats (scramble, alternate, greensomes, modifiedscramble): 0.5 per partner
@@ -3092,7 +3092,7 @@ function GolfScoringApp() {
     const fmt=FORMATS[m.format];
     const isSgl = fmt.ppp===1;
     const matchPairs = getMatchupPairs(m.format);
-    const globalSkinWinner = calcGlobalSkinsForHole(actualHoleNum, allMatches, combinedAllScores, getTeeForMatch, players);
+    const globalSkinWinner = calcGlobalSkinsForHole(actualHoleNum, [m], combinedAllScores, getTeeForMatch, players);
 
     // ── Running round stats (net vs par through holes with scores entered) ──────
     const allScoringIds = Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean) as string[];
@@ -3140,10 +3140,9 @@ function GolfScoringApp() {
       const ids=(m.pairings[pk]??[]).filter(Boolean);
       const isT1=pk.startsWith('t1');
       const oppPk=isT1?(pk==='t1p1'?'t2p1':'t2p2'):(pk==='t2p1'?'t1p1':'t1p2');
-      // Use the same global minimum as calcGlobalSkinsForHole so the ★
-      // indicator and the displayed net score are always consistent with
-      // what the skin award calculation actually applies.
-      const skinSt=skinsStrokes(m.pairingHcps,rank,globalSkinMinHcp(allMatches));
+      // Per-match minimum: ★ only appears for pairings that get strokes
+      // relative to the lowest HC in THIS match, consistent with the award.
+      const skinSt=skinsStrokes(m.pairingHcps,rank);
       const {t1:mp1}=matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank);
       const {t1:mp2}=matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank);
       const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank).t2);
