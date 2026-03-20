@@ -410,6 +410,26 @@ const skinsStrokes = (pHcps: Record<string,number>, rank: number, globalMin?: nu
   return out;
 };
 
+// Normalise a raw Firebase score value to (number|null)[].
+// Firebase stores arrays but strips trailing nulls; when using per-hole paths
+// it returns an object keyed by index strings. Both are handled here.
+const normalizeHoles = (val: unknown, len: number): (number|null)[] => {
+  if (Array.isArray(val)) {
+    const arr = val as (number|null)[];
+    if (arr.length >= len) return arr;
+    return [...arr, ...Array(len - arr.length).fill(null)];
+  }
+  if (val && typeof val === 'object') {
+    const arr: (number|null)[] = Array(len).fill(null);
+    Object.entries(val as Record<string,unknown>).forEach(([k,v]) => {
+      const i = parseInt(k, 10);
+      if (!isNaN(i) && i < len) arr[i] = typeof v === 'number' ? v : null;
+    });
+    return arr;
+  }
+  return Array(len).fill(null);
+};
+
 // Lowest HC across ALL pairings in ALL matches — the global baseline for skins
 const globalSkinMinHcp = (matches: Match[]): number => {
   const vals = matches.flatMap(mx => Object.values(mx.pairingHcps||{}).filter(v => v > 0));
@@ -1087,8 +1107,19 @@ function GolfScoringApp() {
     // they are scoring. This keeps allMatchScores live for global skins calcs.
     const scoresRef = ref(db, `scores/${tournId}`);
     const unsubScores = onValue(scoresRef, snap => {
-      const allScores = snap.val() as Record<string, Record<string,(number|null)[]>> | null;
-      if (!allScores) return;
+      const raw = snap.val() as Record<string, Record<string,unknown>> | null;
+      if (!raw) return;
+      // Normalise each player's score data: Firebase may return arrays or
+      // numeric-keyed objects depending on the write path used.
+      const matchLookup = Object.fromEntries((tData?.matches??[]).map(m=>[m.id,m.holes]));
+      const allScores: Record<string, Record<string,(number|null)[]>> = {};
+      for (const [mid, playerMap] of Object.entries(raw)) {
+        const holeCount = matchLookup[mid] ?? 18;
+        allScores[mid] = {};
+        for (const [pid, val] of Object.entries(playerMap ?? {})) {
+          allScores[mid][pid] = normalizeHoles(val, holeCount);
+        }
+      }
 
       // Always keep allMatchScores fully up to date
       setAllMatchScores(allScores);
@@ -1152,27 +1183,31 @@ function GolfScoringApp() {
     return data;
   };
   const saveTournament = async (data: Tournament, id=tournId) => { await set(ref(db,`tournaments/${id}`),data); };
-  const loadMatchScores = async (mid: string) => { const s=await get(ref(db,`scores/${tournId}/${mid}`)); return (s.val() as Record<string,(number|null)[]>) ?? {}; };
-  
-  // Per-player update: each player's score row is written to its own path so
-  // concurrent saves from different users never overwrite each other's data.
-  // e.g. User A saving {p1, p2} while User B saves {p3, p4} → Firebase merges
-  // them correctly; the last writer does NOT win for the other players' rows.
-  //
-  // Nulls inside a player's holes array are handled identically to the old set()
-  // approach: Firebase strips trailing/interior nulls from arrays, and they are
-  // recovered by the toArray() normalization on read. This is unchanged behaviour.
+  // Load scores and normalise: handles both legacy array format and the newer
+  // per-hole object format. Pass holeCount so short/sparse arrays are padded.
+  const loadMatchScores = async (mid: string, holeCount = 18): Promise<Record<string,(number|null)[]>> => {
+    const s = await get(ref(db, `scores/${tournId}/${mid}`));
+    const raw = s.val() as Record<string,unknown> | null;
+    if (!raw) return {};
+    const result: Record<string,(number|null)[]> = {};
+    for (const [pid, val] of Object.entries(raw)) {
+      result[pid] = normalizeHoles(val, holeCount);
+    }
+    return result;
+  };
+
+  // Write scores at the individual hole level so concurrent saves from two
+  // devices never clobber each other's data. Two devices entering different
+  // holes for the same player each write to their own Firebase path and the
+  // database merges them — last writer only wins for the exact hole they touched.
   const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => {
     try {
       if (!Object.keys(scores).length) return;
-      // Build { pid: holes[], ... } and write it with update() at the match path.
-      // update() only touches the listed player keys; all other players' rows are
-      // left completely untouched in Firebase.
-      const playerRows: Record<string, (number|null)[]> = {};
+      const holeUpdates: Record<string, number|null> = {};
       for (const [pid, holes] of Object.entries(scores)) {
-        playerRows[pid] = holes;
+        holes.forEach((val, idx) => { holeUpdates[`${pid}/${idx}`] = val ?? null; });
       }
-      await update(ref(db, `scores/${tournId}/${mid}`), playerRows);
+      await update(ref(db, `scores/${tournId}/${mid}`), holeUpdates);
       // Firebase write confirmed — safe to clear the localStorage backup.
       clearScoreBackup(tournId, mid);
     } catch (err) {
@@ -1184,7 +1219,7 @@ function GolfScoringApp() {
     if (!tData?.matches) return {};
     const result: Record<string,Record<string,(number|null)[]>> = {};
     for (const m of tData.matches) {
-      const scores = await loadMatchScores(m.id);
+      const scores = await loadMatchScores(m.id, m.holes);
       result[m.id] = scores;
     }
     return result;
@@ -1636,7 +1671,7 @@ function GolfScoringApp() {
     // in any holes scored concurrently by another user that haven't propagated yet.
     let freshScores: Record<string,(number|null)[]> = {};
     try {
-      freshScores = await loadMatchScores(activeMatchId!);
+      freshScores = await loadMatchScores(activeMatchId!, m.holes);
     } catch (err) {
       console.error('Could not load fresh scores, proceeding with local:', err);
     }
@@ -1845,20 +1880,6 @@ function GolfScoringApp() {
 
       if (!inProgressMatches.length) return players;
 
-      // Normalise a Firebase score value to a JS array of (number|null)[]
-      // Firebase strips null-trailing entries and may return objects not arrays
-      const toArray = (val: unknown, len: number): (number|null)[] => {
-        if (Array.isArray(val)) return val as (number|null)[];
-        if (val && typeof val === 'object') {
-          const arr: (number|null)[] = Array(len).fill(null);
-          Object.entries(val as Record<string,unknown>).forEach(([k,v]) => {
-            const i = parseInt(k, 10);
-            if (!isNaN(i) && i < len) arr[i] = typeof v === 'number' ? v : null;
-          });
-          return arr;
-        }
-        return Array(len).fill(null);
-      };
 
       const livePts:   Record<string,number> = {};
       const liveNet:   Record<string,number> = {};
@@ -1875,7 +1896,7 @@ function GolfScoringApp() {
         const rawScores = m.id === activeMatchId ? localScores : (allMatchScores[m.id] ?? {});
         const scores: Record<string,(number|null)[]> = {};
         for (const [pid, val] of Object.entries(rawScores)) {
-          scores[pid] = toArray(val, m.holes);
+          scores[pid] = normalizeHoles(val, m.holes);
         }
 
         // Skins via calcMatchStatus
@@ -2670,12 +2691,17 @@ function GolfScoringApp() {
                 <Btn color="blue" sm onClick={async()=>{
                   setEnteringScores(true);
                   try {
-                    const saved=await loadMatchScores(m.id);
+                    const saved=await loadMatchScores(m.id, m.holes);
                     const backup=loadScoreBackup(tournId,m.id);
                     const init: Record<string,(number|null)[]>={};
                     Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                    // Merge: init < Firebase < localStorage backup (most recent wins)
-                    setLocalScores({...init,...saved,...backup});
+                    // Merge hole-by-hole: Firebase is the baseline; only overwrite
+                    // a hole with the backup value if it is non-null (i.e. this device
+                    // actually entered it). Null backup holes leave Firebase untouched
+                    // so concurrent scores from another device are never wiped.
+                    const merged:{[id:string]:(number|null)[]}={...init,...saved};
+                    for(const[pid,holes]of Object.entries(backup)){if(!merged[pid])merged[pid]=Array(m.holes).fill(null);holes.forEach((v,i)=>{if(v!==null)merged[pid][i]=v;});}
+                    setLocalScores(merged);
                     setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                   } finally {
                     setEnteringScores(false);
@@ -2694,12 +2720,13 @@ function GolfScoringApp() {
               {m.completed&&<Btn color="ghost" sm onClick={()=>setViewingMatchId(m.id)}>📋 Card</Btn>}
               {m.completed&&role==='admin'&&(
                 <Btn color="ghost" sm onClick={async()=>{
-                  const saved=await loadMatchScores(m.id);
+                  const saved=await loadMatchScores(m.id, m.holes);
                   const backup=loadScoreBackup(tournId,m.id);
                   const init: Record<string,(number|null)[]>={};
                   Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                  // Merge: init < Firebase < localStorage backup (most recent wins)
-                  setLocalScores({...init,...saved,...backup});
+                  const merged:{[id:string]:(number|null)[]}={...init,...saved};
+                  for(const[pid,holes]of Object.entries(backup)){if(!merged[pid])merged[pid]=Array(m.holes).fill(null);holes.forEach((v,i)=>{if(v!==null)merged[pid][i]=v;});}
+                  setLocalScores(merged);
                   setActiveMatchId(m.id);setCurrentHole(1);setEditingScores(true);setScreen('scoring');
                 }}>✏️</Btn>
               )}
@@ -2877,7 +2904,7 @@ function GolfScoringApp() {
             const vplayers=tData.players??[];
             const ScorecardModal = () => {
               const [vscores,setVscores] = useState<Record<string,(number|null)[]>>({});
-              useEffect(()=>{loadMatchScores(viewingMatchId).then(setVscores);},[]);
+              useEffect(()=>{loadMatchScores(viewingMatchId, vm.holes).then(setVscores);},[]);
               const allIds = Object.values(vm.pairings||{}).filter(Array.isArray).flat().filter(Boolean);
               return (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{background:'rgba(0,0,0,0.85)'}} onClick={()=>setViewingMatchId(null)}>
