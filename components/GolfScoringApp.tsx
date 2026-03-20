@@ -477,10 +477,10 @@ const calcGlobalSkinsForHole = (
 
     const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
 
-    // Per-match minimum — consistent with the ★ indicator shown on screen.
-    // Using global minimum here would subtract strokes that aren't displayed,
-    // causing net scores to differ from what the indicator implies.
-    const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
+    // Global minimum across ALL matches — ensures fair cross-match skins.
+    // The indicator also uses this same baseline so the ★ and displayed net
+    // are always consistent with the award calculation.
+    const skinSt = skinsStrokes(m.pairingHcps, hd.rank, globalSkinMinHcp(matches));
 
     for (const pk of allPkKeys) {
       const ids = (m.pairings??{})[pk] ?? [];
@@ -3140,11 +3140,10 @@ function GolfScoringApp() {
       const ids=(m.pairings[pk]??[]).filter(Boolean);
       const isT1=pk.startsWith('t1');
       const oppPk=isT1?(pk==='t1p1'?'t2p1':'t2p2'):(pk==='t2p1'?'t1p1':'t1p2');
-      // Stroke indicator uses per-match minimum (lowest HC among the 4 pairings
-      // in THIS match). The global minimum from other matches is only relevant to
-      // the skin-winner calculation, not to the on-screen indicator — using it
-      // would make every pairing show ★ when another match has a lower HC player.
-      const skinSt=skinsStrokes(m.pairingHcps,rank);
+      // Use the same global minimum as calcGlobalSkinsForHole so the ★
+      // indicator and the displayed net score are always consistent with
+      // what the skin award calculation actually applies.
+      const skinSt=skinsStrokes(m.pairingHcps,rank,globalSkinMinHcp(allMatches));
       const {t1:mp1}=matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank);
       const {t1:mp2}=matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank);
       const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank).t2);
