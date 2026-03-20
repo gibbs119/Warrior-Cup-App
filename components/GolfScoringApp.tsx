@@ -431,21 +431,6 @@ const calcGlobalSkinsForHole = (
 ): SkinEntry | null => {
   const allEntries: SkinEntry[] = [];
 
-  // For Best Ball / Singles: every player competes individually against the whole field.
-  // Global min = lowest full course hcp among ALL players listed in tData (same course/slope).
-  // We use the first available tee from any BB/singles match on this call's match list.
-  const isBBorSingles = (m: Match) => m.format === 'bestball' || (FORMATS[m.format]?.ppp === 1);
-  let globalMinHcp = 0;
-  if (players && players.length) {
-    // Find slope from the first BB/singles match that has a tee
-    let slope = 113; // USGA standard fallback
-    for (const m of matches.filter(isBBorSingles)) {
-      const t = getTeeForMatch(m);
-      if (t) { slope = t.slope; break; }
-    }
-    globalMinHcp = Math.min(...players.map(pl => courseHcp(pl.handicapIndex ?? 0, slope)));
-  }
-
   for (const m of matches) {
     const tee = getTeeForMatch(m);
     if (!tee) continue;
@@ -453,10 +438,8 @@ const calcGlobalSkinsForHole = (
     if (!hd) continue;
     const scores = allScores[m.id] ?? {};
 
-    // Scores are stored 0-indexed from the START of the match, not from course hole 1.
-    // For Front 9 (startHole=1): scoreIdx = hole-1. For Back 9 (startHole=10): scoreIdx = hole-10.
     const scoreIdx = hole - m.startHole;
-    if (scoreIdx < 0 || scoreIdx >= m.holes) continue; // hole not part of this match
+    if (scoreIdx < 0 || scoreIdx >= m.holes) continue;
 
     const fmt = FORMATS[m.format];
     const isSingles = fmt?.ppp === 1;
@@ -464,45 +447,22 @@ const calcGlobalSkinsForHole = (
 
     const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
 
-    // For team formats: build skinSt only from pairings that have a score on this hole.
-    // This prevents a pairing with pairingHcp=0 (unassigned/partial) from dragging the
-    // minimum to 0 and giving all real pairings artificial strokes they shouldn't receive.
-    let skinSt: Record<string,number> = {};
-    if (!isBestBall && !isSingles) {
-      const activePkHcps: Record<string,number> = {};
-      for (const pk of allPkKeys) {
-        const ids2 = (m.pairings??{})[pk] ?? [];
-        if (!ids2.length) continue;
-        const raw2 = scores[ids2[0]]?.[scoreIdx] ?? null;
-        if (raw2 != null) activePkHcps[pk] = m.pairingHcps[pk] ?? 0;
-      }
-      if (Object.keys(activePkHcps).length) skinSt = skinsStrokes(activePkHcps, hd.rank, globalSkinMinHcp(matches));
-    }
+    // Per-match minimum: skinsStrokes uses lowest non-zero pairingHcp in this match.
+    const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
 
     for (const pk of allPkKeys) {
       const ids = (m.pairings??{})[pk] ?? [];
       if (ids.length === 0) continue;
 
       if (isBestBall || isSingles) {
-        // Individual skins: each player vs global field minimum using FULL course hcp
+        // Individual skins: per-match minimum (lowest pairingHcp in this match), no carryover
         for (const playerId of ids) {
           const raw = scores[playerId]?.[scoreIdx] ?? null;
           if (raw == null) continue;
-          let playerSkinStrokes = 0;
-          if (players) {
-            const p = players.find(x => x.id === playerId);
-            const myHcp = courseHcp(p?.handicapIndex ?? 0, tee.slope); // full, not 90%
-            const diff = myHcp - globalMinHcp;
-            const base = Math.floor(diff / 18);
-            const extra = hd.rank <= (diff % 18) ? 1 : 0;
-            playerSkinStrokes = Math.max(0, base + extra);
-          } else {
-            playerSkinStrokes = skinSt[pk] || 0;
-          }
-          allEntries.push({ matchId: m.id, pk, playerIds: [playerId], net: raw - playerSkinStrokes });
+          allEntries.push({ matchId: m.id, pk, playerIds: [playerId], net: raw - (skinSt[pk] || 0) });
         }
       } else {
-        // Team formats: pairing-level strokes relative to active-pairing minimum
+        // Team formats: pairing-level strokes relative to per-match minimum
         const pid = ids[0];
         const raw = scores[pid]?.[scoreIdx] ?? null;
         if (raw == null) continue;
@@ -1454,12 +1414,12 @@ function GolfScoringApp() {
     return (m.format==='bestball'||m.format==='singles') ? Math.min(...raw) : raw[0];
   };
 
-  const calcHoleResults = (m: Match, hole: number, scores: Record<string,(number|null)[]>, tee: Tee|null, globalMin?: number) => {
+  const calcHoleResults = (m: Match, hole: number, scores: Record<string,(number|null)[]>, tee: Tee|null) => {
     if (!m?.pairingHcps||!tee) return null;
     const actualHole = hole+(m.startHole-1);
     const hd = tee.holes.find(h=>h.h===actualHole);
     const rank = hd?.rank ?? hole;
-    const skinSt = skinsStrokes(m.pairingHcps, rank, globalMin);
+    const skinSt = skinsStrokes(m.pairingHcps, rank);
 
     if (m.format==='modifiedscramble') {
       const netOf = (pk: string) => {
@@ -1588,9 +1548,8 @@ function GolfScoringApp() {
     // Determine if we should use global skins (across all matches) or per-match skins
     const useGlobalSkins = allMatches && allMatches.length > 0 && allScores && getTeeFunc;
     
-    const gMin = allMatches ? globalSkinMinHcp(allMatches) : undefined;
     for(let h=1;h<=m.holes;h++){
-      const res=calcHoleResults(m,h,scores,tee,gMin); if(!res) continue;
+      const res=calcHoleResults(m,h,scores,tee); if(!res) continue;
       for(const r of res.matchupResults){if(r.winner==='t1p')t1++;else if(r.winner==='t2p')t2++;}
       
       // Calculate skins - use global calculation if available
@@ -1648,14 +1607,12 @@ function GolfScoringApp() {
       }
     }
 
-    const fmAllMatches = tData?.matches ?? [];
-    const fmGlobalMin = globalSkinMinHcp(fmAllMatches);
     const matchupPts={team1:0,team2:0};
 
     if(fmt.perHole) {
       let t1Holes=0, t2Holes=0;
       for(let h=1;h<=m.holes;h++){
-        const res=calcHoleResults(m,h,computeScores,tee,fmGlobalMin);
+        const res=calcHoleResults(m,h,computeScores,tee);
         const w=res?.matchupResults[0]?.winner;
         if(w==='t1p') t1Holes++;
         else if(w==='t2p') t2Holes++;
@@ -1668,7 +1625,7 @@ function GolfScoringApp() {
       for(const [a,b] of pairs){
         let at1=0,at2=0;
         for(let h=1;h<=m.holes;h++){
-          const res=calcHoleResults(m,h,computeScores,tee,fmGlobalMin);
+          const res=calcHoleResults(m,h,computeScores,tee);
           const mr=res?.matchupResults.find(x=>x.a===a&&x.b===b);
           if(mr?.winner==='t1p')at1++;else if(mr?.winner==='t2p')at2++;
         }
@@ -1705,11 +1662,11 @@ function GolfScoringApp() {
 
     if (fmt.perHole) {
       for (let h=1;h<=m.holes;h++) {
-        const res = calcHoleResults(m,h,computeScores,tee,fmGlobalMin);
+        const res = calcHoleResults(m,h,computeScores,tee);
         const w = res?.matchupResults[0]?.winner;
         if (!w || w==='tie') continue;
         const winPks = w==='t1p' ? ['t1p1','t1p2'] : ['t2p1','t2p2'];
-        const skinSt = skinsStrokes(m.pairingHcps, res.rank??h, fmGlobalMin);
+        const skinSt = skinsStrokes(m.pairingHcps, res.rank??h);
         const pairNets = winPks.map(pk => {
           const raw = pairRawScore(m,pk,h,computeScores);
           return raw!=null ? {pk, net: raw-(skinSt[pk]||0), ids: m.pairings[pk]??[]} : null;
@@ -1726,7 +1683,7 @@ function GolfScoringApp() {
       for (const [a,b] of pairs) {
         let at1=0,at2=0;
         for (let h=1;h<=m.holes;h++) {
-          const res = calcHoleResults(m,h,computeScores,tee,fmGlobalMin);
+          const res = calcHoleResults(m,h,computeScores,tee);
           const mr = res?.matchupResults.find(x=>x.a===a&&x.b===b);
           if (mr?.winner==='t1p') at1++; else if (mr?.winner==='t2p') at2++;
         }
@@ -1747,7 +1704,7 @@ function GolfScoringApp() {
       const actualHole = h+(m.startHole-1);
       const hd = tee?.holes.find(x=>x.h===actualHole);
       if (!hd) continue;
-      const skinSt = skinsStrokes(m.pairingHcps, hd.rank, fmGlobalMin);
+      const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
       for (const pk of Object.keys(m.pairings??{})) {
         const ids = (m.pairings[pk]??[]).filter(Boolean);
         if (!ids.length) continue;
@@ -1863,8 +1820,6 @@ function GolfScoringApp() {
       const liveNet:   Record<string,number> = {};
       const liveSkins: Record<string,number> = {};
       players.forEach(p => { livePts[p.id]=0; liveNet[p.id]=0; liveSkins[p.id]=0; });
-      const liveGlobalMin = globalSkinMinHcp(tData?.matches ?? []);
-
       for (const m of inProgressMatches) {
         const tee2 = getTeeForMatch(m);
         if (!tee2) continue;
@@ -1894,7 +1849,7 @@ function GolfScoringApp() {
             const ah = h + (m.startHole-1);
             const hd2 = tee2.holes.find(x => x.h === ah);
             if (!hd2) continue;
-            const skinSt2 = skinsStrokes(m.pairingHcps, hd2.rank, liveGlobalMin);
+            const skinSt2 = skinsStrokes(m.pairingHcps, hd2.rank);
             for (const pk of Object.keys(m.pairings ?? {})) {
               const pids = (m.pairings[pk] ?? []).filter(Boolean);
               if (!pids.length) continue;
@@ -1911,11 +1866,11 @@ function GolfScoringApp() {
           const pairs = getMatchupPairs(m.format);
           if (fmt.perHole) {
             for (let h=1; h<=m.holes; h++) {
-              const res2 = calcHoleResults(m, h, scores, tee2, liveGlobalMin);
+              const res2 = calcHoleResults(m, h, scores, tee2);
               const w = res2?.matchupResults?.[0]?.winner;
               if (!w || w==='tie') continue;
               const winPks = w==='t1p' ? ['t1p1','t1p2'] : ['t2p1','t2p2'];
-              const skinSt3 = skinsStrokes(m.pairingHcps, res2.rank ?? h, liveGlobalMin);
+              const skinSt3 = skinsStrokes(m.pairingHcps, res2.rank ?? h);
               const pairNets = winPks.map(pk => {
                 const r2 = pairRawScore(m, pk, h, scores);
                 return r2!=null ? {pk, net:r2-(skinSt3[pk]||0), ids:(m.pairings[pk]??[]).filter(Boolean)} : null;
@@ -1934,7 +1889,7 @@ function GolfScoringApp() {
             for (const [a,b] of pairs) {
               let at1=0,at2=0;
               for (let h=1; h<=m.holes; h++) {
-                const res2 = calcHoleResults(m, h, scores, tee2, liveGlobalMin);
+                const res2 = calcHoleResults(m, h, scores, tee2);
                 const mr = res2?.matchupResults?.find(x=>x.a===a&&x.b===b);
                 if (mr?.winner==='t1p') at1++; else if (mr?.winner==='t2p') at2++;
               }
@@ -2944,7 +2899,7 @@ function GolfScoringApp() {
                         <div className="text-xs font-bold text-white/40 mb-2 tracking-wider uppercase">Hole Results</div>
                         <div className="flex flex-wrap gap-1.5">
                           {Array.from({length:vm.holes},(_,i)=>i+1).map(h=>{
-                            const res=calcHoleResults(vm,h,vscores,vtee,globalSkinMinHcp(tData?.matches??[]));
+                            const res=calcHoleResults(vm,h,vscores,vtee);
                             const wins={t1:0,t2:0};
                             res?.matchupResults?.forEach(r=>{if(r.winner==='t1p')wins.t1++;else if(r.winner==='t2p')wins.t2++;});
                             const ah=h+(vm.startHole-1);
@@ -2997,9 +2952,8 @@ function GolfScoringApp() {
     const combinedAllScores = { ...allMatchScores, [activeMatchId!]: localScores };
     
     // Use global skins for match status
-    const displayGlobalMin = globalSkinMinHcp(allMatches);
     const ms=calcMatchStatus(m, localScores, matchTee, allMatches, combinedAllScores, getTeeForMatch);
-    const holeRes=calcHoleResults(m,currentHole,localScores,matchTee,displayGlobalMin);
+    const holeRes=calcHoleResults(m,currentHole,localScores,matchTee);
     const fmt=FORMATS[m.format];
     const isSgl = fmt.ppp===1;
     const matchPairs = getMatchupPairs(m.format);
@@ -3037,7 +2991,7 @@ function GolfScoringApp() {
             const{t1:st1,t2:st2}=matchplayStrokes(m.pairingHcps[pk2]??0,m.pairingHcps[oppPk2]??0,rank2);
             matchStrk2=pk2.startsWith('t1')?st1:st2;
           } else {
-            matchStrk2=skinsStrokes(m.pairingHcps,rank2,displayGlobalMin)[pk2]??0;
+            matchStrk2=skinsStrokes(m.pairingHcps,rank2)[pk2]??0;
           }
           const teamRaw=localScores[pIds2[0]]?.[h-1];
           if (teamRaw==null) continue;
@@ -3051,7 +3005,7 @@ function GolfScoringApp() {
       const ids=(m.pairings[pk]??[]).filter(Boolean);
       const isT1=pk.startsWith('t1');
       const oppPk=isT1?(pk==='t1p1'?'t2p1':'t2p2'):(pk==='t2p1'?'t1p1':'t1p2');
-      const skinSt=skinsStrokes(m.pairingHcps,rank,displayGlobalMin);
+      const skinSt=skinsStrokes(m.pairingHcps,rank);
       const {t1:mp1}=matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank);
       const {t1:mp2}=matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank);
       const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank).t2);
@@ -3175,20 +3129,19 @@ function GolfScoringApp() {
                 const sc=localScores[id]?.[currentHole-1]??null;
                 const hasStroke = isBestBall && playerStrokes[id] > 0;
 
-                // Per-player skins stroke vs global field minimum
-                // All 8 players compete on the same course → use current tee slope for everyone.
-                // Full course hcp (not 90%) — skins is stroke play, not match play allowance.
+                // Per-player skins stroke: per-match minimum (only players in this match), no carryover.
                 let playerSkinStrokes = skinSt[pk] ?? 0;
                 if (isBestBall && matchTee) {
-                  // Lowest full course hcp among ALL tournament players on this tee
-                  const globalMin = Math.min(...players.map(pl =>
-                    courseHcp(pl.handicapIndex ?? 0, matchTee.slope)
-                  ));
+                  // For bestball, pairingHcps are combined-pair values; compute per-individual instead.
+                  // Minimum = lowest individual HC among all players in THIS match.
+                  const matchPlayerIds = Object.values(m.pairings||{}).flat().filter(Boolean) as string[];
+                  const matchMin = Math.min(...matchPlayerIds.map(pid => {
+                    const pl2 = players.find(x => x.id === pid);
+                    return pl2 ? courseHcp(pl2.handicapIndex ?? 0, matchTee.slope) : Infinity;
+                  }).filter(v => v < Infinity));
                   const myHcp = courseHcp(p?.handicapIndex ?? 0, matchTee.slope);
-                  const diff = myHcp - globalMin;
-                  const base = Math.floor(diff / 18);
-                  const extra = rank <= (diff % 18) ? 1 : 0;
-                  playerSkinStrokes = base + extra;
+                  const diff = myHcp - matchMin;
+                  playerSkinStrokes = (diff > 0 && rank <= diff) ? 1 : 0;
                 }
 
                 return (
@@ -3262,7 +3215,7 @@ function GolfScoringApp() {
                       {Array.from({length:m.holes},(_,i)=>i+1).map(mh=>{
                         const ah=mh+(m.startHole-1);
                         const hd2=matchTee?.holes.find(x=>x.h===ah);
-                        const res2=calcHoleResults(m,mh,localScores,matchTee,displayGlobalMin);
+                        const res2=calcHoleResults(m,mh,localScores,matchTee);
                         const wins={t1:0,t2:0};
                         res2?.matchupResults?.forEach(r=>{if(r.winner==='t1p')wins.t1++;else if(r.winner==='t2p')wins.t2++;});
                         const scored=res2?.matchupResults?.some(r=>r.winner!=null);
@@ -3320,7 +3273,7 @@ function GolfScoringApp() {
                 <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
                   {Array.from({length:m.holes},(_,i)=>i+1).map(mh=>{
                     const ah=mh+(m.startHole-1);
-                    const res2=calcHoleResults(m,mh,localScores,matchTee,displayGlobalMin);
+                    const res2=calcHoleResults(m,mh,localScores,matchTee);
                     const wins={t1:0,t2:0};
                     res2?.matchupResults?.forEach(r=>{if(r.winner==='t1p')wins.t1++;else if(r.winner==='t2p')wins.t2++;});
                     const scored=res2?.matchupResults?.some(r=>r.winner!=null);
@@ -3384,7 +3337,7 @@ function GolfScoringApp() {
             {Array.from({length:m.holes},(_,i)=>i+1).map(mh=>{
               const ah=mh+(m.startHole-1);
               const hd2=matchTee?.holes.find(h=>h.h===ah);
-              const res=calcHoleResults(m,mh,localScores,matchTee,displayGlobalMin);
+              const res=calcHoleResults(m,mh,localScores,matchTee);
               const wins={team1:0,team2:0};
               res?.matchupResults?.forEach(r=>{if(r.winner==='t1p')wins.team1++;else if(r.winner==='t2p')wins.team2++;});
               const scored=res?.matchupResults?.some(r=>r.winner!=null);
@@ -3430,7 +3383,7 @@ function GolfScoringApp() {
                   {matchPairs.map(([a,b],i)=>{
                     let pT1=0,pT2=0;
                     for(let h=1;h<=runningHolesCount;h++){
-                      const res2=calcHoleResults(m,h,localScores,matchTee,displayGlobalMin);
+                      const res2=calcHoleResults(m,h,localScores,matchTee);
                       const mr=res2?.matchupResults?.find(r=>r.a===a&&r.b===b);
                       if(!mr||mr.winner==null)continue;
                       if(mr.winner==='t1p')pT1++;else if(mr.winner==='t2p')pT2++;
