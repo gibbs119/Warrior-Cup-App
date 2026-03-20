@@ -3096,8 +3096,8 @@ function GolfScoringApp() {
                     : <>
                         {/* Match stroke: head-to-head relative (scramble / greensomes / singles etc.) */}
                         {!fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)} match stroke{myStrokes>1?'s':''}</span>}
-                        {/* Skin stroke: global-game relative — shown for scramble/greensomes/alternateshot */}
-                        {['scramble','greensomes','alternateshot'].includes(m.format)&&skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])} skin stroke{skinSt[pk]>1?'s':''}</span>}
+                        {/* Skin stroke: global-game relative — shown for all formats */}
+                        {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])} skin stroke{skinSt[pk]>1?'s':''}</span>}
                       </>
                   }
                 </div>
