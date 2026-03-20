@@ -1134,18 +1134,29 @@ function GolfScoringApp() {
       const mid = activeMatchIdRef.current;
       if (mid && allScores[mid]) {
         setLocalScores(prev => {
+          // Skip update entirely if we're not on the scoring screen (localScores={})
+          // or if this match isn't currently being scored.
+          if (!Object.keys(prev).length) return prev;
           const incoming = allScores[mid];
           const merged: Record<string,(number|null)[]> = { ...prev };
+          let changed = false;
           for (const [pid, holes] of Object.entries(incoming)) {
             if (!merged[pid]) {
               merged[pid] = holes as (number|null)[];
+              changed = true;
             } else {
-              merged[pid] = (merged[pid] as (number|null)[]).map(
+              const next = (merged[pid] as (number|null)[]).map(
                 (local, i) => local !== null ? local : ((holes as (number|null)[])[i] ?? null)
               );
+              // Only replace array if a hole actually changed to avoid reference churn.
+              if (next.some((v, i) => v !== (merged[pid] as (number|null)[])[i])) {
+                merged[pid] = next;
+                changed = true;
+              }
             }
           }
-          return merged;
+          // Return prev unchanged if nothing new arrived — prevents spurious re-renders.
+          return changed ? merged : prev;
         });
       }
     });
@@ -1219,8 +1230,12 @@ function GolfScoringApp() {
       if (Object.keys(holeUpdates).length > 0) {
         await update(ref(db, `scores/${tournId}/${mid}`), holeUpdates);
       }
-      // Firebase write confirmed (or nothing to write) — safe to clear backup.
-      clearScoreBackup(tournId, mid);
+      // Do NOT clear the backup here. The backup is cleared only when the user
+      // explicitly navigates away or finishes the match, after all writes confirm.
+      // Clearing it on every auto-save creates a race: if two writes are in-flight
+      // and the first completes, it clears the backup for scores the second write
+      // hasn't confirmed yet — those scores then have no recovery path if the
+      // app is killed before the second write lands.
     } catch (err) {
       console.error('Error saving scores:', err);
       throw err;
@@ -1860,6 +1875,8 @@ function GolfScoringApp() {
         })(),
       }));
       showToast('Match completed successfully!', 'success');
+      // Match is fully saved — clear the localStorage backup for this match.
+      if (activeMatchId) clearScoreBackup(tournId, activeMatchId);
       setActiveMatchId(null);setLocalScores({});setScreen('tournament');
     } catch (err) {
       console.error('Failed to finalize match:', err);
@@ -2710,10 +2727,13 @@ function GolfScoringApp() {
                 </button>
               )}
               {role==='admin'&&!m.completed&&(
-                <Btn color="green" sm onClick={()=>{
+                <Btn color="green" sm onClick={async()=>{
                   const init: Record<string,(number|null)[]>={};
                   Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                  setLocalScores(init);setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                  // Load any scores already entered by players so admin sees the
+                  // current state immediately (same as the player "Enter Scores" path).
+                  const saved=await loadMatchScores(m.id, m.holes);
+                  setLocalScores({...init,...saved});setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>▶ Play</Btn>
               )}
               {role==='player'&&!m.completed&&(
@@ -2724,12 +2744,14 @@ function GolfScoringApp() {
                     const backup=loadScoreBackup(tournId,m.id);
                     const init: Record<string,(number|null)[]>={};
                     Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                    // Merge hole-by-hole: Firebase is the baseline; only overwrite
-                    // a hole with the backup value if it is non-null (i.e. this device
-                    // actually entered it). Null backup holes leave Firebase untouched
-                    // so concurrent scores from another device are never wiped.
+                    // Merge: Firebase is authoritative. The backup (localStorage)
+                    // only fills holes that Firebase does NOT have — i.e. scores
+                    // entered on this device whose Firebase write was still in-flight
+                    // when the app was suspended/killed.
+                    // Backup NEVER overrides a non-null Firebase value so admin edits
+                    // and concurrent device entries are always preserved.
                     const merged:{[id:string]:(number|null)[]}={...init,...saved};
-                    for(const[pid,holes]of Object.entries(backup)){if(!merged[pid])merged[pid]=Array(m.holes).fill(null);holes.forEach((v,i)=>{if(v!==null)merged[pid][i]=v;});}
+                    for(const[pid,holes]of Object.entries(backup)){if(!merged[pid])merged[pid]=Array(m.holes).fill(null);holes.forEach((v,i)=>{if(v!==null&&merged[pid][i]===null)merged[pid][i]=v;});}
                     setLocalScores(merged);
                     setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                   } finally {
@@ -2754,7 +2776,8 @@ function GolfScoringApp() {
                   const init: Record<string,(number|null)[]>={};
                   Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
                   const merged:{[id:string]:(number|null)[]}={...init,...saved};
-                  for(const[pid,holes]of Object.entries(backup)){if(!merged[pid])merged[pid]=Array(m.holes).fill(null);holes.forEach((v,i)=>{if(v!==null)merged[pid][i]=v;});}
+                  // Same Firebase-first merge: backup only fills holes Firebase lacks.
+                  for(const[pid,holes]of Object.entries(backup)){if(!merged[pid])merged[pid]=Array(m.holes).fill(null);holes.forEach((v,i)=>{if(v!==null&&merged[pid][i]===null)merged[pid][i]=v;});}
                   setLocalScores(merged);
                   setActiveMatchId(m.id);setCurrentHole(1);setEditingScores(true);setScreen('scoring');
                 }}>✏️</Btn>
@@ -3109,7 +3132,11 @@ function GolfScoringApp() {
       const ids=(m.pairings[pk]??[]).filter(Boolean);
       const isT1=pk.startsWith('t1');
       const oppPk=isT1?(pk==='t1p1'?'t2p1':'t2p2'):(pk==='t2p1'?'t1p1':'t1p2');
-      const skinSt=skinsStrokes(m.pairingHcps,rank,globalSkinMinHcp(allMatches));
+      // Stroke indicator uses per-match minimum (lowest HC among the 4 pairings
+      // in THIS match). The global minimum from other matches is only relevant to
+      // the skin-winner calculation, not to the on-screen indicator — using it
+      // would make every pairing show ★ when another match has a lower HC player.
+      const skinSt=skinsStrokes(m.pairingHcps,rank);
       const {t1:mp1}=matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank);
       const {t1:mp2}=matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank);
       const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank).t2);
@@ -3403,7 +3430,16 @@ function GolfScoringApp() {
         <div className="sticky top-0 z-20 border-b border-white/10" style={{background:'rgba(11,22,40,0.98)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)'}}>
           <div className="flex items-center justify-between px-4 pb-2" style={{paddingTop:'calc(env(safe-area-inset-top) + 12px)'}}>
             <button onClick={async()=>{
-                if(activeMatchId) await saveMatchScores(activeMatchId, localScores);
+                if(activeMatchId){
+                  await saveMatchScores(activeMatchId, localScores);
+                  // Firebase confirmed — safe to clear the backup now that
+                  // all scores are durably saved and the session is ending.
+                  clearScoreBackup(tournId, activeMatchId);
+                }
+                // Clear scoring state so the onValue merger doesn't keep running
+                // for this match after we've left the scoring screen.
+                setActiveMatchId(null);
+                setLocalScores({});
                 setScreen('tournament');
                 if(editingScores)setEditingScores(false);
               }}
