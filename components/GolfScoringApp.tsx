@@ -394,11 +394,15 @@ const bestBallStrokes = (m: Match, pairingKey: string, oppPairingKey: string, ra
 
 const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
   const out: Record<string,number> = {};
+  // Global minimum: lowest HC among active (non-zero) pairings in this game
+  const vals = Object.values(pHcps||{}).filter(v => v > 0);
+  if (!vals.length) return out;
+  const minHcp = Math.min(...vals);
   for (const [k,hcp] of Object.entries(pHcps||{})) {
-    // Absolute strokes: team gets a stroke on every hole where rank <= their HC
-    const baseStrokes = Math.floor(hcp / 18);
-    const extraStroke = (rank <= (hcp % 18)) ? 1 : 0;
-    out[k] = baseStrokes + extraStroke;
+    if (!hcp) { out[k] = 0; continue; }
+    const diff = hcp - minHcp;
+    // 1 stroke on holes where this pairing's diff above the minimum covers the rank
+    out[k] = (diff > 0 && rank <= diff) ? 1 : 0;
   }
   return out;
 };
@@ -3087,11 +3091,14 @@ function GolfScoringApp() {
                 <div className={`font-bebas font-bold text-lg leading-tight break-words ${isT1?'text-blue-200':'text-red-200'}`}>
                   {names.join(' & ')}
                   {m.format==='modifiedscramble'
-                    ? <>
-                        {myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)} match stroke{myStrokes>1?'s':''}</span>}
-                        {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])} skin stroke{skinSt[pk]>1?'s':''}</span>}
+                    // Modified scramble: match & skin both use global-game relative formula — single indicator
+                    ? skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])} stroke{skinSt[pk]>1?'s':''} this hole</span>
+                    : <>
+                        {/* Match stroke: head-to-head relative (scramble / greensomes / singles etc.) */}
+                        {!fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)} match stroke{myStrokes>1?'s':''}</span>}
+                        {/* Skin stroke: global-game relative — shown for scramble/greensomes/alternateshot */}
+                        {['scramble','greensomes','alternateshot'].includes(m.format)&&skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])} skin stroke{skinSt[pk]>1?'s':''}</span>}
                       </>
-                    : !fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)} stroke{myStrokes>1?'s':''} this hole</span>
                   }
                 </div>
               )}
