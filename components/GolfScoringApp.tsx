@@ -899,6 +899,19 @@ function GolfScoringApp() {
     try { const s = localStorage.getItem(SESSION_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
   };
 
+  // Synchronous localStorage score backup — written on every tap so scores
+  // survive Safari being killed before the async Firebase write completes.
+  const scoreBackupKey = (tid: string, mid: string) => `wc_scores_${tid}_${mid}`;
+  const saveScoreBackup = (tid: string, mid: string, scores: Record<string,(number|null)[]>) => {
+    try { localStorage.setItem(scoreBackupKey(tid, mid), JSON.stringify(scores)); } catch {}
+  };
+  const loadScoreBackup = (tid: string, mid: string): Record<string,(number|null)[]> => {
+    try { const s = localStorage.getItem(scoreBackupKey(tid, mid)); return s ? JSON.parse(s) : {}; } catch { return {}; }
+  };
+  const clearScoreBackup = (tid: string, mid: string) => {
+    try { localStorage.removeItem(scoreBackupKey(tid, mid)); } catch {}
+  };
+
   // On mount: attempt silent auto-restore from cached session.
   // Uses normalizeTournament (same as the Firebase onValue listener) so the
   // restored tData is identical to what a live subscription would produce —
@@ -1149,7 +1162,7 @@ function GolfScoringApp() {
   // Nulls inside a player's holes array are handled identically to the old set()
   // approach: Firebase strips trailing/interior nulls from arrays, and they are
   // recovered by the toArray() normalization on read. This is unchanged behaviour.
-  const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => { 
+  const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => {
     try {
       if (!Object.keys(scores).length) return;
       // Build { pid: holes[], ... } and write it with update() at the match path.
@@ -1160,6 +1173,8 @@ function GolfScoringApp() {
         playerRows[pid] = holes;
       }
       await update(ref(db, `scores/${tournId}/${mid}`), playerRows);
+      // Firebase write confirmed — safe to clear the localStorage backup.
+      clearScoreBackup(tournId, mid);
     } catch (err) {
       console.error('Error saving scores:', err);
       throw err;
@@ -1421,11 +1436,12 @@ function GolfScoringApp() {
       arr[hole-1] = val;
       const next = {...prev, [pid]: arr};
 
-      // Save to Firebase immediately on every score tap so all devices stay in
-      // sync in real-time and navigating away never loses data.
-      if (scoreSaveTimerRef.current) clearTimeout(scoreSaveTimerRef.current);
+      // Synchronous localStorage backup — completes before iOS can kill the page.
+      // Firebase write is async; if Safari is killed first, the backup survives.
       const mid = activeMatchIdRef.current;
       if (mid) {
+        saveScoreBackup(tournId, mid, next);
+        if (scoreSaveTimerRef.current) clearTimeout(scoreSaveTimerRef.current);
         saveMatchScores(mid, next).catch(err => console.error('Auto-save failed:', err));
       }
 
@@ -2655,9 +2671,11 @@ function GolfScoringApp() {
                   setEnteringScores(true);
                   try {
                     const saved=await loadMatchScores(m.id);
+                    const backup=loadScoreBackup(tournId,m.id);
                     const init: Record<string,(number|null)[]>={};
                     Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                    setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
+                    // Merge: init < Firebase < localStorage backup (most recent wins)
+                    setLocalScores({...init,...saved,...backup});
                     setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                   } finally {
                     setEnteringScores(false);
@@ -2677,9 +2695,11 @@ function GolfScoringApp() {
               {m.completed&&role==='admin'&&(
                 <Btn color="ghost" sm onClick={async()=>{
                   const saved=await loadMatchScores(m.id);
+                  const backup=loadScoreBackup(tournId,m.id);
                   const init: Record<string,(number|null)[]>={};
                   Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                  setLocalScores(Object.keys(saved).length?{...init,...saved}:init);
+                  // Merge: init < Firebase < localStorage backup (most recent wins)
+                  setLocalScores({...init,...saved,...backup});
                   setActiveMatchId(m.id);setCurrentHole(1);setEditingScores(true);setScreen('scoring');
                 }}>✏️</Btn>
               )}
