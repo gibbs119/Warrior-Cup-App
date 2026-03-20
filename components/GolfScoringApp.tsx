@@ -452,8 +452,8 @@ const calcGlobalSkinsForHole = (
 
     const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
 
-    // Per-match minimum: skinsStrokes uses lowest non-zero pairingHcp in this match.
-    const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
+    // Global minimum: skins strokes relative to lowest HC across ALL matches.
+    const skinSt = skinsStrokes(m.pairingHcps, hd.rank, globalSkinMinHcp(matches));
 
     for (const pk of allPkKeys) {
       const ids = (m.pairings??{})[pk] ?? [];
@@ -3033,7 +3033,7 @@ function GolfScoringApp() {
       const ids=(m.pairings[pk]??[]).filter(Boolean);
       const isT1=pk.startsWith('t1');
       const oppPk=isT1?(pk==='t1p1'?'t2p1':'t2p2'):(pk==='t2p1'?'t1p1':'t1p2');
-      const skinSt=skinsStrokes(m.pairingHcps,rank);
+      const skinSt=skinsStrokes(m.pairingHcps,rank,globalSkinMinHcp(allMatches));
       const {t1:mp1}=matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank);
       const {t1:mp2}=matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank);
       const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank).t2);
