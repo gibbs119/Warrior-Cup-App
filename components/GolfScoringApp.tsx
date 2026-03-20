@@ -459,6 +459,7 @@ const calcGlobalSkinsForHole = (
   players?: Player[]
 ): SkinEntry | null => {
   const allEntries: SkinEntry[] = [];
+  let expectedEntries = 0;
 
   for (const m of matches) {
     const tee = getTeeForMatch(m);
@@ -476,8 +477,10 @@ const calcGlobalSkinsForHole = (
 
     const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
 
-    // Global minimum: skins strokes relative to lowest HC across ALL matches.
-    const skinSt = skinsStrokes(m.pairingHcps, hd.rank, globalSkinMinHcp(matches));
+    // Per-match minimum — consistent with the ★ indicator shown on screen.
+    // Using global minimum here would subtract strokes that aren't displayed,
+    // causing net scores to differ from what the indicator implies.
+    const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
 
     for (const pk of allPkKeys) {
       const ids = (m.pairings??{})[pk] ?? [];
@@ -486,6 +489,7 @@ const calcGlobalSkinsForHole = (
       if (isBestBall) {
         // Best Ball skins: all 8 individual players compete, each on their own ball.
         // Minimum = lowest individual course HC among all 8 players in this match.
+        expectedEntries += ids.length;
         const allMatchPlayerIds = (Object.values(m.pairings||{}).flat().filter(Boolean)) as string[];
         const allMatchHcps = allMatchPlayerIds.map(pid => {
           const pl = players?.find(x => x.id === pid);
@@ -508,13 +512,15 @@ const calcGlobalSkinsForHole = (
         }
       } else if (isSingles) {
         // Singles skins: per-match minimum already in skinSt (each slot = 1 individual player)
+        expectedEntries += ids.length;
         for (const playerId of ids) {
           const raw = scores[playerId]?.[scoreIdx] ?? null;
           if (raw == null) continue;
           allEntries.push({ matchId: m.id, pk, playerIds: [playerId], net: raw - (skinSt[pk] || 0) });
         }
       } else {
-        // Team formats: pairing-level strokes relative to per-match minimum
+        // Team formats: 1 entry per pairing
+        expectedEntries += 1;
         const pid = ids[0];
         const raw = scores[pid]?.[scoreIdx] ?? null;
         if (raw == null) continue;
@@ -523,7 +529,9 @@ const calcGlobalSkinsForHole = (
     }
   }
 
-  if (allEntries.length === 0) return null;
+  // Only award a skin when ALL expected participants have entered scores.
+  // Prevents premature skin awards while a hole is still being played.
+  if (allEntries.length === 0 || allEntries.length < expectedEntries) return null;
   const best = Math.min(...allEntries.map(e => e.net));
   const winners = allEntries.filter(e => e.net === best);
   if (winners.length === 1) return winners[0];
