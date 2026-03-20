@@ -3506,54 +3506,40 @@ function GolfScoringApp() {
 
         <div className="max-w-2xl mx-auto p-4 space-y-3 pb-8 safe-bottom">
 
-          {/* ── Running Round Score ─────────────────────────────────────── */}
+          {/* ── Running Match Status ─────────────────────────────────────── */}
           {runningHolesCount>0&&(
             <div className="rounded-2xl border border-white/10 p-3" style={{background:'rgba(255,255,255,0.04)'}}>
               <div className="text-xs font-bold text-white/30 tracking-widest uppercase mb-2.5">
-                Through {runningHolesCount} hole{runningHolesCount!==1?'s':''} · net vs par
+                Through {runningHolesCount} hole{runningHolesCount!==1?'s':''} · match status
               </div>
-              <div className={`grid gap-3 ${allScoringIds.length<=4?'grid-cols-4':'grid-cols-4'}`}>
-                {allScoringIds.map(id=>{
-                  const p2=players.find(x=>x.id===id);
-                  const net=runningNetVsPar[id]??0;
-                  const isT1Pl=Object.entries(m.pairings??{}).some(([k,v])=>k.startsWith('t1')&&(v as string[]).includes(id));
-                  const netColor=net<0?'text-red-300':net===0?'text-white/70':'text-blue-300';
+              <div className="space-y-2">
+                {matchPairs.map(([a,b],i)=>{
+                  const aIds=(m.pairings[a]??[]).filter(Boolean);
+                  const bIds=(m.pairings[b]??[]).filter(Boolean);
+                  if(!aIds.length&&!bIds.length) return null;
+                  let pT1=0,pT2=0;
+                  for(let h=1;h<=runningHolesCount;h++){
+                    const res2=calcHoleResults(m,h,localScores,matchTee);
+                    const mr=res2?.matchupResults?.find(r=>r.a===a&&r.b===b);
+                    if(!mr||mr.winner==null)continue;
+                    if(mr.winner==='t1p')pT1++;else if(mr.winner==='t2p')pT2++;
+                  }
+                  const pLead=Math.abs(pT1-pT2),pRem=m.holes-runningHolesCount;
+                  let pLabel='AS';
+                  if(pT1>pT2)pLabel=(pLead>pRem&&pRem>=0)?`${pLead}&${pRem}`:`${pLead}UP`;
+                  else if(pT2>pT1)pLabel=(pLead>pRem&&pRem>=0)?`${pLead}&${pRem}`:`${pLead}DN`;
+                  const aName=aIds.map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join(' & ');
+                  const bName=bIds.map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join(' & ');
+                  const labelColor=pT1>pT2?'text-blue-300':pT2>pT1?'text-red-300':'text-white/50';
                   return (
-                    <div key={id} className="text-center">
-                      <div className={`text-xs font-bold truncate mb-0.5 ${isT1Pl?'text-blue-400/70':'text-red-400/70'}`}>{p2?.name??'?'}</div>
-                      <div className={`font-bebas font-black text-2xl leading-none ${netColor}`}>
-                        {net<0?net:net===0?'E':`+${net}`}
-                      </div>
+                    <div key={i} className="flex items-center justify-between gap-2">
+                      <span className="text-blue-400/80 text-sm font-semibold truncate" style={{maxWidth:'38%'}}>{aName||'TBD'}</span>
+                      <span className={`font-bebas font-bold text-xl shrink-0 ${labelColor}`}>{pLabel}</span>
+                      <span className="text-red-400/80 text-sm font-semibold truncate text-right" style={{maxWidth:'38%'}}>{bName||'TBD'}</span>
                     </div>
                   );
                 })}
               </div>
-              {(m.format==='bestball'||m.format==='singles')&&(
-                <div className="border-t border-white/10 mt-2.5 pt-2.5 space-y-1.5">
-                  {matchPairs.map(([a,b],i)=>{
-                    let pT1=0,pT2=0;
-                    for(let h=1;h<=runningHolesCount;h++){
-                      const res2=calcHoleResults(m,h,localScores,matchTee);
-                      const mr=res2?.matchupResults?.find(r=>r.a===a&&r.b===b);
-                      if(!mr||mr.winner==null)continue;
-                      if(mr.winner==='t1p')pT1++;else if(mr.winner==='t2p')pT2++;
-                    }
-                    const pLead=Math.abs(pT1-pT2),pRem=m.holes-runningHolesCount;
-                    let pLabel='AS';
-                    if(pT1>pT2)pLabel=(pLead>pRem&&pRem>=0)?`${pLead}&${pRem}`:`${pLead}UP`;
-                    else if(pT2>pT1)pLabel=(pLead>pRem&&pRem>=0)?`${pLead}&${pRem}`:`${pLead}DN`;
-                    const aName=(m.pairings[a]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join('/');
-                    const bName=(m.pairings[b]??[]).map(id=>players.find(p=>p.id===id)?.name).filter(Boolean).join('/');
-                    return (
-                      <div key={i} className="flex items-center justify-between text-xs gap-1">
-                        <span className="text-blue-400/70 truncate" style={{maxWidth:'38%'}}>{aName||'TBD'}</span>
-                        <span className={`font-bebas font-bold text-base px-1 shrink-0 ${pT1>pT2?'text-blue-300':pT2>pT1?'text-red-300':'text-white/40'}`}>{pLabel}</span>
-                        <span className="text-red-400/70 truncate text-right" style={{maxWidth:'38%'}}>{bName||'TBD'}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           )}
 
