@@ -7,7 +7,7 @@ import {
   Lightbulb, Info
 } from 'lucide-react';
 import { db } from '@/Lib/firebase';
-import { ref, onValue, set, get, update, runTransaction } from 'firebase/database';
+import { ref, onValue, set, get, update, remove, runTransaction } from 'firebase/database';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Hole { h: number; par: number; yards: number; rank: number; }
@@ -430,10 +430,14 @@ const normalizeHoles = (val: unknown, len: number): (number|null)[] => {
   return Array(len).fill(null);
 };
 
-// Lowest HC across ALL pairings in ALL matches — the global baseline for skins
-const globalSkinMinHcp = (matches: Match[]): number => {
+// Lowest HC across ALL pairings in ALL matches — the global baseline for skins.
+// Returns undefined (not 0) when there are no positive handicaps, so callers
+// can fall back to the per-match minimum rather than treating 0 as the baseline
+// (which would give every pairing strokes relative to scratch and make the ★
+// skin-stroke indicator appear for all pairings simultaneously).
+const globalSkinMinHcp = (matches: Match[]): number | undefined => {
   const vals = matches.flatMap(mx => Object.values(mx.pairingHcps||{}).filter(v => v > 0));
-  return vals.length ? Math.min(...vals) : 0;
+  return vals.length ? Math.min(...vals) : undefined;
 };
 
 const calcMatchPts = (m: Match) => {
@@ -1200,21 +1204,39 @@ function GolfScoringApp() {
   // devices never clobber each other's data. Two devices entering different
   // holes for the same player each write to their own Firebase path and the
   // database merges them — last writer only wins for the exact hole they touched.
+  //
+  // IMPORTANT: only non-null values are written. Writing null via update()
+  // would *delete* that Firebase key, erasing a score entered by another device.
+  // To explicitly clear a scored hole, call clearHoleScore() instead.
   const saveMatchScores = async (mid: string, scores: Record<string,(number|null)[]>) => {
     try {
       if (!Object.keys(scores).length) return;
-      const holeUpdates: Record<string, number|null> = {};
+      const holeUpdates: Record<string, number> = {};
       for (const [pid, holes] of Object.entries(scores)) {
-        holes.forEach((val, idx) => { holeUpdates[`${pid}/${idx}`] = val ?? null; });
+        holes.forEach((val, idx) => { if (val !== null) holeUpdates[`${pid}/${idx}`] = val; });
       }
-      await update(ref(db, `scores/${tournId}/${mid}`), holeUpdates);
-      // Firebase write confirmed — safe to clear the localStorage backup.
+      // Only issue the update if there is at least one score to write.
+      if (Object.keys(holeUpdates).length > 0) {
+        await update(ref(db, `scores/${tournId}/${mid}`), holeUpdates);
+      }
+      // Firebase write confirmed (or nothing to write) — safe to clear backup.
       clearScoreBackup(tournId, mid);
     } catch (err) {
       console.error('Error saving scores:', err);
       throw err;
     }
   };
+  // Remove a single hole score from Firebase (used when the user taps "Clear").
+  // saveMatchScores skips nulls deliberately, so we need an explicit remove for
+  // clears to ensure the Firebase key is actually deleted.
+  const clearHoleScore = async (mid: string, pid: string, holeIdx: number) => {
+    try {
+      await remove(ref(db, `scores/${tournId}/${mid}/${pid}/${holeIdx}`));
+    } catch (err) {
+      console.error('Error clearing hole score:', err);
+    }
+  };
+
   const loadAllMatchScores = async (): Promise<Record<string,Record<string,(number|null)[]>>> => {
     if (!tData?.matches) return {};
     const result: Record<string,Record<string,(number|null)[]>> = {};
@@ -1477,7 +1499,14 @@ function GolfScoringApp() {
       if (mid) {
         saveScoreBackup(tournId, mid, next);
         if (scoreSaveTimerRef.current) clearTimeout(scoreSaveTimerRef.current);
-        saveMatchScores(mid, next).catch(err => console.error('Auto-save failed:', err));
+        if (val === null) {
+          // Explicit clear: delete just this one hole key in Firebase.
+          // saveMatchScores skips nulls (to avoid clobbering concurrent writes),
+          // so we need an explicit remove here.
+          clearHoleScore(mid, pid, hole - 1).catch(err => console.error('Clear failed:', err));
+        } else {
+          saveMatchScores(mid, next).catch(err => console.error('Auto-save failed:', err));
+        }
       }
 
       return next;
