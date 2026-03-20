@@ -393,15 +393,11 @@ const bestBallStrokes = (m: Match, pairingKey: string, oppPairingKey: string, ra
 };
 
 const skinsStrokes = (pHcps: Record<string,number>, rank: number) => {
-  const vals = Object.values(pHcps||{});
-  if (!vals.length) return {} as Record<string,number>;
-  const min = Math.min(...vals);
   const out: Record<string,number> = {};
   for (const [k,hcp] of Object.entries(pHcps||{})) {
-    const diff = hcp - min;
-    // Base strokes (full 18s) + extra stroke if rank is within remainder
-    const baseStrokes = Math.floor(diff / 18);
-    const extraStroke = (rank <= (diff % 18)) ? 1 : 0;
+    // Absolute strokes: team gets a stroke on every hole where rank <= their HC
+    const baseStrokes = Math.floor(hcp / 18);
+    const extraStroke = (rank <= (hcp % 18)) ? 1 : 0;
     out[k] = baseStrokes + extraStroke;
   }
   return out;
