@@ -1134,18 +1134,29 @@ function GolfScoringApp() {
       const mid = activeMatchIdRef.current;
       if (mid && allScores[mid]) {
         setLocalScores(prev => {
+          // Skip update entirely if we're not on the scoring screen (localScores={})
+          // or if this match isn't currently being scored.
+          if (!Object.keys(prev).length) return prev;
           const incoming = allScores[mid];
           const merged: Record<string,(number|null)[]> = { ...prev };
+          let changed = false;
           for (const [pid, holes] of Object.entries(incoming)) {
             if (!merged[pid]) {
               merged[pid] = holes as (number|null)[];
+              changed = true;
             } else {
-              merged[pid] = (merged[pid] as (number|null)[]).map(
+              const next = (merged[pid] as (number|null)[]).map(
                 (local, i) => local !== null ? local : ((holes as (number|null)[])[i] ?? null)
               );
+              // Only replace array if a hole actually changed to avoid reference churn.
+              if (next.some((v, i) => v !== (merged[pid] as (number|null)[])[i])) {
+                merged[pid] = next;
+                changed = true;
+              }
             }
           }
-          return merged;
+          // Return prev unchanged if nothing new arrived — prevents spurious re-renders.
+          return changed ? merged : prev;
         });
       }
     });
@@ -2716,10 +2727,13 @@ function GolfScoringApp() {
                 </button>
               )}
               {role==='admin'&&!m.completed&&(
-                <Btn color="green" sm onClick={()=>{
+                <Btn color="green" sm onClick={async()=>{
                   const init: Record<string,(number|null)[]>={};
                   Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                  setLocalScores(init);setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                  // Load any scores already entered by players so admin sees the
+                  // current state immediately (same as the player "Enter Scores" path).
+                  const saved=await loadMatchScores(m.id, m.holes);
+                  setLocalScores({...init,...saved});setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>▶ Play</Btn>
               )}
               {role==='player'&&!m.completed&&(
@@ -3422,6 +3436,10 @@ function GolfScoringApp() {
                   // all scores are durably saved and the session is ending.
                   clearScoreBackup(tournId, activeMatchId);
                 }
+                // Clear scoring state so the onValue merger doesn't keep running
+                // for this match after we've left the scoring screen.
+                setActiveMatchId(null);
+                setLocalScores({});
                 setScreen('tournament');
                 if(editingScores)setEditingScores(false);
               }}
