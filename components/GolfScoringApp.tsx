@@ -3087,7 +3087,10 @@ function GolfScoringApp() {
                 <div className={`font-bebas font-bold text-lg leading-tight break-words ${isT1?'text-blue-200':'text-red-200'}`}>
                   {names.join(' & ')}
                   {m.format==='modifiedscramble'
-                    ? skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])} stroke{skinSt[pk]>1?'s':''} this hole</span>
+                    ? <>
+                        {myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)} match stroke{myStrokes>1?'s':''}</span>}
+                        {skinSt[pk]>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(skinSt[pk])} skin stroke{skinSt[pk]>1?'s':''}</span>}
+                      </>
                     : !fmt.perHole&&myStrokes>0&&<span className="text-yellow-400 ml-2 text-sm whitespace-nowrap">{'★'.repeat(myStrokes)} stroke{myStrokes>1?'s':''} this hole</span>
                   }
                 </div>
