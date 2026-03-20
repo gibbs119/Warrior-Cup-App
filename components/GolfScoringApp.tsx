@@ -477,8 +477,10 @@ const calcGlobalSkinsForHole = (
 
     const allPkKeys = Object.keys(m.pairings??{}).filter(k => ((m.pairings??{})[k]?.length ?? 0) > 0);
 
-    // Global minimum: skins strokes relative to lowest HC across ALL matches.
-    const skinSt = skinsStrokes(m.pairingHcps, hd.rank, globalSkinMinHcp(matches));
+    // Per-match minimum — consistent with the ★ indicator shown on screen.
+    // Using global minimum here would subtract strokes that aren't displayed,
+    // causing net scores to differ from what the indicator implies.
+    const skinSt = skinsStrokes(m.pairingHcps, hd.rank);
 
     for (const pk of allPkKeys) {
       const ids = (m.pairings??{})[pk] ?? [];
