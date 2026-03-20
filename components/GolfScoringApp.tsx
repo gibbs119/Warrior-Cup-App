@@ -354,7 +354,9 @@ const validation = {
 
 const matchplayStrokes = (hcp1: number, hcp2: number, rank: number) => {
   const diff = Math.abs(hcp1-hcp2);
-  const gets = diff>0 && rank<=diff ? 1 : 0;
+  const base = Math.floor(diff / 18);
+  const extra = (diff % 18 > 0 && rank <= (diff % 18)) ? 1 : 0;
+  const gets = base + extra;
   return hcp1>hcp2 ? {t1:gets,t2:0} : hcp2>hcp1 ? {t1:0,t2:gets} : {t1:0,t2:0};
 };
 
@@ -400,7 +402,10 @@ const skinsStrokes = (pHcps: Record<string,number>, rank: number, globalMin?: nu
   for (const [k,hcp] of Object.entries(pHcps||{})) {
     if (!hcp) { out[k] = 0; continue; }
     const diff = hcp - minHcp;
-    out[k] = (diff > 0 && rank <= diff) ? 1 : 0;
+    if (diff <= 0) { out[k] = 0; continue; }
+    const base = Math.floor(diff / 18);
+    const extra = (diff % 18 > 0 && rank <= (diff % 18)) ? 1 : 0;
+    out[k] = base + extra;
   }
   return out;
 };
@@ -454,8 +459,31 @@ const calcGlobalSkinsForHole = (
       const ids = (m.pairings??{})[pk] ?? [];
       if (ids.length === 0) continue;
 
-      if (isBestBall || isSingles) {
-        // Individual skins: per-match minimum (lowest pairingHcp in this match), no carryover
+      if (isBestBall) {
+        // Best Ball skins: all 8 individual players compete, each on their own ball.
+        // Minimum = lowest individual course HC among all 8 players in this match.
+        const allMatchPlayerIds = (Object.values(m.pairings||{}).flat().filter(Boolean)) as string[];
+        const allMatchHcps = allMatchPlayerIds.map(pid => {
+          const pl = players?.find(x => x.id === pid);
+          return pl ? courseHcp(pl.handicapIndex ?? 0, tee.slope) : 0;
+        }).filter(v => v > 0);
+        const matchMinHcp = allMatchHcps.length ? Math.min(...allMatchHcps) : 0;
+        for (const playerId of ids) {
+          const raw = scores[playerId]?.[scoreIdx] ?? null;
+          if (raw == null) continue;
+          const pl = players?.find(x => x.id === playerId);
+          const myHcp = pl ? courseHcp(pl.handicapIndex ?? 0, tee.slope) : 0;
+          const diff = myHcp - matchMinHcp;
+          let playerStrokes = 0;
+          if (diff > 0 && matchMinHcp > 0) {
+            const base = Math.floor(diff / 18);
+            const extra = (diff % 18 > 0 && hd.rank <= (diff % 18)) ? 1 : 0;
+            playerStrokes = base + extra;
+          }
+          allEntries.push({ matchId: m.id, pk, playerIds: [playerId], net: raw - playerStrokes });
+        }
+      } else if (isSingles) {
+        // Singles skins: per-match minimum already in skinSt (each slot = 1 individual player)
         for (const playerId of ids) {
           const raw = scores[playerId]?.[scoreIdx] ?? null;
           if (raw == null) continue;
@@ -3141,7 +3169,11 @@ function GolfScoringApp() {
                   }).filter(v => v < Infinity));
                   const myHcp = courseHcp(p?.handicapIndex ?? 0, matchTee.slope);
                   const diff = myHcp - matchMin;
-                  playerSkinStrokes = (diff > 0 && rank <= diff) ? 1 : 0;
+                  if (diff > 0) {
+                    const base = Math.floor(diff / 18);
+                    const extra = (diff % 18 > 0 && rank <= (diff % 18)) ? 1 : 0;
+                    playerSkinStrokes = base + extra;
+                  }
                 }
 
                 return (
