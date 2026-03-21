@@ -640,7 +640,7 @@ input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin
 
 // ─── UI Atoms ─────────────────────────────────────────────────────────────────
 const BG = memo(({children}: {children: React.ReactNode}) => (
-  <div className="min-h-[100dvh] relative" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
+  <div className="min-h-[100dvh] relative safe-x" style={{background:'linear-gradient(160deg,#060E1C 0%,#0A1628 45%,#0D1F38 100%)'}}>
     <style suppressHydrationWarning>{FONTS}</style>
     <div className="absolute inset-0 pointer-events-none select-none overflow-hidden" style={{zIndex:0}}>
       {/* Subtle diagonal rule grid */}
@@ -1074,6 +1074,7 @@ function GolfScoringApp() {
   const [showLiveCard, setShowLiveCard]     = useState(false);
   const [statsTab, setStatsTab]             = useState<'overview'|'players'|'partnerships'>('overview');
   const [autoRestoring, setAutoRestoring]   = useState(true); // true while attempting auto-restore on mount
+  const [isLandscape, setIsLandscape]       = useState(false);
   
   // ── Toast Notifications ──────────────────────────────────────────────────────
   const [toasts, setToasts] = useState<Array<{id: string; message: string; type: 'success' | 'error' | 'info'}>>([]);
@@ -1112,6 +1113,16 @@ function GolfScoringApp() {
   const clearScoreBackup = (tid: string, mid: string) => {
     try { localStorage.removeItem(scoreBackupKey(tid, mid)); } catch {}
   };
+
+  // ── Orientation detection (portrait ↔ landscape) ─────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(orientation: landscape)');
+    setIsLandscape(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsLandscape(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // On mount: attempt silent auto-restore from cached session.
   // Uses normalizeTournament (same as the Firebase onValue listener) so the
@@ -1257,8 +1268,6 @@ function GolfScoringApp() {
         clearTimeout(scoreSaveTimerRef.current);
         scoreSaveTimerRef.current = null;
       }
-      // Use sendBeacon if available (survives page unload), else fall back to fetch
-      const url = `https://firestore.googleapis.com`; // placeholder — we use the Firebase SDK below
       saveMatchScores(mid, scores).catch(err => console.error('Flush save failed:', err));
     };
 
@@ -1834,7 +1843,7 @@ function GolfScoringApp() {
       return {pk,ids:m.pairings[pk]??[],net:raw-(skinSt[pk]||0)};
     }).filter(Boolean) as {pk:string;ids:string[];net:number}[];
     let skinWinner=null;
-    if(skinNets.length>=4){const best=Math.min(...skinNets.map(x=>x.net));const w=skinNets.filter(x=>x.net===best);if(w.length===1)skinWinner=w[0];}
+    if(skinNets.length>0&&skinNets.length===allPkKeys.length){const best=Math.min(...skinNets.map(x=>x.net));const w=skinNets.filter(x=>x.net===best);if(w.length===1)skinWinner=w[0];}
     return {matchupResults,skinWinner,rank,hd};
   };
 
@@ -1853,8 +1862,11 @@ function GolfScoringApp() {
     // Determine if we should use global skins (across all matches) or per-match skins
     const useGlobalSkins = allMatches && allMatches.length > 0 && allScores && getTeeFunc;
     
+    let lastScoredHole = 0;
     for(let h=1;h<=m.holes;h++){
       const res=calcHoleResults(m,h,scores,tee); if(!res) continue;
+      const hasResult = res.matchupResults.some(r=>r.winner!==null);
+      if(hasResult) lastScoredHole=h;
       for(const r of res.matchupResults){if(r.winner==='t1p')t1++;else if(r.winner==='t2p')t2++;}
       
       // Calculate skins - use global calculation if available
@@ -1880,10 +1892,10 @@ function GolfScoringApp() {
         res.skinWinner.ids.forEach(id=>{playerSkins[id]=(playerSkins[id]||0)+v;});
       }
     }
-    const lead=Math.abs(t1-t2),rem=m.holes-currentHole;
+    const lead=Math.abs(t1-t2),rem=m.holes-lastScoredHole;
     let label='AS';
-    if(t1>t2) label=(lead>rem&&rem>=0)?`${lead}&${rem}`:`${lead}UP`;
-    else if(t2>t1) label=(lead>rem&&rem>=0)?`${lead}&${rem}`:`${lead}UP`;
+    if(t1>t2) label=(lead>rem&&rem>0)?`${lead}&${rem}`:`${lead}UP`;
+    else if(t2>t1) label=(lead>rem&&rem>0)?`${lead}&${rem}`:`${lead}UP`;
     return{t1Holes:t1,t2Holes:t2,label,leader:t1>t2?'team1':t2>t1?'team2':null,playerSkins};
   };
 
@@ -2218,7 +2230,7 @@ function GolfScoringApp() {
 
   // ── Top Navigation Bar ────────────────────────────────────────────────────────
   const TopBar = ({title,back}:{title?:string;back?:()=>void}) => (
-    <div className="flex items-center justify-between px-4 pb-3 border-b border-white/10" style={{background:'rgba(6,14,28,0.95)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',paddingTop:'calc(env(safe-area-inset-top) + 14px)'}}>
+    <div className="flex items-center justify-between px-4 pb-3 border-b border-white/10" style={{background:'rgba(6,14,28,0.95)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)',paddingTop:'calc(env(safe-area-inset-top) + 14px)',paddingLeft:'max(1rem, env(safe-area-inset-left))',paddingRight:'max(1rem, env(safe-area-inset-right))'}}>
       <div className="flex items-center gap-3 min-w-0">
         {back ? (
           <button onClick={back} className="flex items-center gap-1 text-[#C9A227] text-sm font-semibold shrink-0">
@@ -3043,7 +3055,10 @@ function GolfScoringApp() {
                   // Load any scores already entered by players so admin sees the
                   // current state immediately (same as the player "Enter Scores" path).
                   const saved=await loadMatchScores(m.id, m.holes);
-                  setLocalScores({...init,...saved});setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                  const merged={...init,...saved};
+                  const lastScored=Array.from({length:m.holes},(_,i)=>i).filter(i=>Object.values(merged).some(h=>h[i]!=null)).pop()??-1;
+                  const resumeAt=lastScored===-1?1:Math.min(lastScored+2,m.holes);
+                  setLocalScores(merged);setActiveMatchId(m.id);setCurrentHole(resumeAt);setScreen('scoring');
                 }}>▶ Play</Btn>
               )}
               {role==='viewer'&&(
@@ -3051,8 +3066,11 @@ function GolfScoringApp() {
                   const saved=await loadMatchScores(m.id, m.holes);
                   const init: Record<string,(number|null)[]>={};
                   Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                  setLocalScores({...init,...saved});
-                  setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                  const merged={...init,...saved};
+                  const lastScored=Array.from({length:m.holes},(_,i)=>i).filter(i=>Object.values(merged).some(h=>h[i]!=null)).pop()??-1;
+                  const resumeAt=lastScored===-1?1:Math.min(lastScored+2,m.holes);
+                  setLocalScores(merged);
+                  setActiveMatchId(m.id);setCurrentHole(resumeAt);setScreen('scoring');
                 }}>👁 Watch</Btn>
               )}
               {role==='player'&&!m.completed&&(
@@ -3071,8 +3089,10 @@ function GolfScoringApp() {
                     // and concurrent device entries are always preserved.
                     const merged:{[id:string]:(number|null)[]}={...init,...saved};
                     for(const[pid,holes]of Object.entries(backup)){if(!merged[pid])merged[pid]=Array(m.holes).fill(null);holes.forEach((v,i)=>{if(v!==null&&merged[pid][i]===null)merged[pid][i]=v;});}
+                    const lastScored=Array.from({length:m.holes},(_,i)=>i).filter(i=>Object.values(merged).some(h=>h[i]!=null)).pop()??-1;
+                    const resumeAt=lastScored===-1?1:Math.min(lastScored+2,m.holes);
                     setLocalScores(merged);
-                    setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                    setActiveMatchId(m.id);setCurrentHole(resumeAt);setScreen('scoring');
                   } finally {
                     setEnteringScores(false);
                   }
@@ -3560,19 +3580,23 @@ function GolfScoringApp() {
                   {teamScore!=null ? teamScore : '—'}
                 </div>
               ) : (
-              <div className="grid grid-cols-5 gap-2">
-                {[1,2,3,4,5,6,7,8,9,10].map(n=>{
-                  const par = hd?.par ?? 4;
+              <div className={`grid gap-2 ${isLandscape?'grid-cols-6':'grid-cols-5'}`}>
+                {(()=>{
+                  const par=hd?.par??4;
+                  const maxSt=Math.max(myStrokes,skinSt[pk]??0);
+                  const maxScore=2*par+maxSt;
+                  return Array.from({length:maxScore},(_,i)=>i+1).map(n=>{
                   const diff = n - par;
                   const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                   return (
                     <button key={n} onClick={()=>ids.forEach(id=>setScore(id,currentHole,n))}
-                      className={`h-12 rounded-xl font-bebas font-bold text-lg border-2 transition-all ${teamScore===n?'border-yellow-400 scale-105':'border-white/10'} ${relColor}`}
+                      className={`score-btn rounded-xl font-bebas font-bold text-lg border-2 transition-all ${teamScore===n?'border-yellow-400 scale-105':'border-white/10'} ${relColor}`}
                       style={{background:teamScore===n?'rgba(201,162,39,0.3)':'rgba(255,255,255,0.07)'}}>
                       {n}
                     </button>
                   );
-                })}
+                  });
+                })()}
               </div>
               )}
             </div>
@@ -3622,19 +3646,23 @@ function GolfScoringApp() {
                         {sc!=null ? sc : '—'}
                       </div>
                     ) : (
-                    <div className="grid grid-cols-5 gap-2">
-                      {[1,2,3,4,5,6,7,8,9,10].map(n=>{
-                        const par = hd?.par ?? 4;
+                    <div className={`grid gap-2 ${isLandscape?'grid-cols-6':'grid-cols-5'}`}>
+                      {(()=>{
+                        const par=hd?.par??4;
+                        const maxSt=Math.max(playerStrokes[id]??0,playerSkinStrokes);
+                        const maxScore=2*par+maxSt;
+                        return Array.from({length:maxScore},(_,i)=>i+1).map(n=>{
                         const diff = n - par;
                         const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                         return (
                           <button key={n} onClick={()=>setScore(id,currentHole,n)}
-                            className={`h-12 rounded-xl font-bebas font-bold text-lg border-2 transition-all active:scale-95 ${sc===n?'border-yellow-400 scale-105':'border-white/10'} ${relColor}`}
+                            className={`score-btn rounded-xl font-bebas font-bold text-lg border-2 transition-all active:scale-95 ${sc===n?'border-yellow-400 scale-105':'border-white/10'} ${relColor}`}
                             style={{background:sc===n?'rgba(201,162,39,0.3)':'rgba(255,255,255,0.07)'}}>
                             {n}
                           </button>
                         );
-                      })}
+                        });
+                      })()}
                     </div>
                     )}
                     {sc !== null && (
@@ -3757,7 +3785,7 @@ function GolfScoringApp() {
         )}
         {/* Hole Header */}
         <div className="sticky top-0 z-20 border-b border-white/10" style={{background:'rgba(11,22,40,0.98)',backdropFilter:'blur(16px)',WebkitBackdropFilter:'blur(16px)'}}>
-          <div className="flex items-center justify-between px-4 pb-2" style={{paddingTop:'calc(env(safe-area-inset-top) + 12px)'}}>
+          <div className="flex items-center justify-between px-4 pb-2 scoring-header-pt">
             <button onClick={async()=>{
                 if(activeMatchId){
                   await saveMatchScores(activeMatchId, localScores);
@@ -3797,13 +3825,15 @@ function GolfScoringApp() {
             </div>
           </div>
 
-          {/* Match details row */}
+          {/* Match details row — hidden in landscape to save vertical space */}
+          {!isLandscape&&(
           <div className="px-4 pb-2 flex items-center gap-2 flex-wrap">
             <span className="text-xs text-white/30">{fmt.name}</span>
             <span className="text-white/10">·</span>
             <span className="text-xs text-white/30">{(tData?.courses??[]).find(c=>c.id===(m.courseId??tData.activeCourseId))?.name} {matchTee?.name}</span>
             {editingScores&&<Badge color="orange">Editing</Badge>}
           </div>
+          )}
 
           {/* Hole Navigator */}
           <div className="flex gap-1.5 overflow-x-auto px-4 pb-3 scrollbar-hide">
@@ -3817,7 +3847,7 @@ function GolfScoringApp() {
               const bg=scored?(wins.team1>wins.team2?'bg-blue-600 text-white':wins.team2>wins.team1?'bg-red-600 text-white':'bg-white/20 text-white'):'bg-white/5 text-white/40';
               return (
                 <button key={mh} onClick={()=>setCurrentHole(mh)}
-                  className={`flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all ${bg}`}
+                  className={`hole-chip flex-shrink-0 rounded-xl flex flex-col items-center justify-center transition-all ${bg}`}
                   style={currentHole===mh?{outline:'2px solid #C9A227',outlineOffset:'2px'}:{}}>
                   <div className="font-bebas font-bold text-base leading-none">{ah}</div>
                   {hd2&&<div className="text-xs opacity-60 leading-none">P{hd2.par}</div>}
@@ -3827,14 +3857,14 @@ function GolfScoringApp() {
           </div>
         </div>
 
-        <div className="max-w-2xl mx-auto p-4 space-y-3 pb-8 safe-bottom">
+        <div className={`mx-auto p-4 space-y-3 pb-8 safe-bottom ${isLandscape?'max-w-4xl':'max-w-2xl'}`}>
 
           {/* ── Running Match Status ─────────────────────────────────────── */}
           {runningHolesCount>0&&(
-            <div className="rounded-2xl border border-white/10 p-3" style={{background:'rgba(255,255,255,0.04)'}}>
-              <div className="text-xs font-bold text-white/30 tracking-widest uppercase mb-2.5">
+            <div className={`rounded-2xl border border-white/10 ${isLandscape?'p-2':'p-3'}`} style={{background:'rgba(255,255,255,0.04)'}}>
+              {!isLandscape&&<div className="text-xs font-bold text-white/30 tracking-widest uppercase mb-2.5">
                 Through {runningHolesCount} hole{runningHolesCount!==1?'s':''} · match status
-              </div>
+              </div>}
               <div className="space-y-2">
                 {matchPairs.map(([a,b],i)=>{
                   const aIds=(m.pairings[a]??[]).filter(Boolean);
@@ -3894,7 +3924,7 @@ function GolfScoringApp() {
 
           {/* Score Entry */}
           {isSgl ? (
-            <div className="grid grid-cols-1 gap-3">
+            <div className={`grid gap-3 ${isLandscape?'grid-cols-2':'grid-cols-1'}`}>
               {matchPairs.map(([a,b],i)=>(
                 <div key={i} className="p-4 rounded-2xl card-dark">
                   <div className="text-xs font-bold text-white/30 mb-3 tracking-widest uppercase">Match {i+1}</div>
@@ -3905,7 +3935,7 @@ function GolfScoringApp() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3">
+            <div className={`grid gap-3 ${isLandscape?'grid-cols-2':'grid-cols-1'}`}>
               {matchPairs.map(([a,b],i)=>(
                 <div key={i} className="p-4 rounded-2xl card-dark">
                   <div className="text-xs font-bold text-white/30 mb-3 tracking-widest uppercase">Pairing {i+1}</div>
