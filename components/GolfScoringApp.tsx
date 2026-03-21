@@ -904,6 +904,7 @@ function GolfScoringApp() {
   const [scoringLoading, setScoringLoading] = useState(false);
   const [enteringScores, setEnteringScores] = useState(false);
   const [showLiveCard, setShowLiveCard]     = useState(false);
+  const [statsTab, setStatsTab]             = useState<'overview'|'players'|'partnerships'>('overview');
   const [autoRestoring, setAutoRestoring]   = useState(true); // true while attempting auto-restore on mount
   
   // ── Toast Notifications ──────────────────────────────────────────────────────
@@ -3685,140 +3686,375 @@ function GolfScoringApp() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // STANDINGS
+  // STANDINGS / STATS
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='standings') {
-    if (!tData) {
-      return <BG><TopBar title="Standings"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
-    }
-    const players=livePlayerStats;
+    if (!tData) return <BG><TopBar title="Stats"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
 
-    // MVP ranking calculation
-    const contribs = [...players].map(p=>({
-      ...p,
-      pts: p.stats?.pointsContributed||0,
-      net: p.stats?.netUnderPar||0,
-      skins: p.stats?.skinsWon||0,
-    })).sort((a,b)=>
-      b.pts!==a.pts ? b.pts-a.pts :
-      b.net!==a.net ? b.net-a.net :
-      b.skins-a.skins
+    const allPlayers   = tData.players ?? [];
+    const completedResults = tData.matchResults ?? [];
+    const matchMap     = new Map<string,Match>((tData.matches ?? []).map(m => [m.id, m]));
+    const team1Ids     = new Set(tData.teams?.team1 ?? []);
+    const team2Ids     = new Set(tData.teams?.team2 ?? []);
+    const team1Name    = tData.teamNames?.team1 ?? 'Team 1';
+    const team2Name    = tData.teamNames?.team2 ?? 'Team 2';
+
+    // ── Team-level aggregates ────────────────────────────────────────────────
+    const teamRec = {
+      team1: {W:0,L:0,H:0,holes:0,skins:0,pts:0},
+      team2: {W:0,L:0,H:0,holes:0,skins:0,pts:0},
+    };
+    const fmtBreak: Record<string,{name:string;t1pts:number;t2pts:number;t1W:number;t2W:number;H:number;count:number}> = {};
+
+    for (const r of completedResults) {
+      const m = matchMap.get(r.matchId); if (!m) continue;
+      const t1p = r.teamPoints.team1 ?? 0;
+      const t2p = r.teamPoints.team2 ?? 0;
+      teamRec.team1.pts += t1p; teamRec.team2.pts += t2p;
+      if (t1p > t2p)      { teamRec.team1.W++; teamRec.team2.L++; }
+      else if (t2p > t1p) { teamRec.team2.W++; teamRec.team1.L++; }
+      else                { teamRec.team1.H++; teamRec.team2.H++; }
+      teamRec.team1.holes += r.team1HolesWon ?? 0;
+      teamRec.team2.holes += r.team2HolesWon ?? 0;
+      Object.entries(r.playerSkins ?? {}).forEach(([id,s]) => {
+        if (team1Ids.has(id)) teamRec.team1.skins += s as number;
+        else teamRec.team2.skins += s as number;
+      });
+      const fmt = m.format;
+      if (!fmtBreak[fmt]) fmtBreak[fmt] = {name:FORMATS[fmt]?.name??fmt,t1pts:0,t2pts:0,t1W:0,t2W:0,H:0,count:0};
+      const fb = fmtBreak[fmt];
+      fb.t1pts += t1p; fb.t2pts += t2p; fb.count++;
+      if (t1p > t2p) fb.t1W++; else if (t2p > t1p) fb.t2W++; else fb.H++;
+    }
+    const totalHoles = teamRec.team1.holes + teamRec.team2.holes;
+
+    // ── Per-player aggregates ────────────────────────────────────────────────
+    interface PDetail {
+      W:number; L:number; H:number; pts:number; skins:number; net:number;
+      matchesPlayed:number; holesPlayed:number;
+      fmtRec: Record<string,{W:number;L:number;H:number}>;
+      partners: Record<string,{W:number;L:number;H:number;pts:number}>;
+    }
+    const pd: Record<string,PDetail> = {};
+    allPlayers.forEach(p => { pd[p.id]={W:0,L:0,H:0,pts:0,skins:0,net:0,matchesPlayed:0,holesPlayed:0,fmtRec:{},partners:{}}; });
+
+    for (const r of completedResults) {
+      const m = matchMap.get(r.matchId); if (!m) continue;
+      const t1p = r.teamPoints.team1 ?? 0;
+      const t2p = r.teamPoints.team2 ?? 0;
+      const halve = t1p === t2p;
+      for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
+        const ids = (rawIds as string[]).filter(Boolean);
+        if (!ids.length) continue;
+        const isT1 = pk.startsWith('t1');
+        const won  = isT1 ? t1p > t2p : t2p > t1p;
+        for (const id of ids) {
+          const p = pd[id]; if (!p) continue;
+          p.matchesPlayed++;
+          p.holesPlayed += m.holes;
+          if (halve) p.H++; else if (won) p.W++; else p.L++;
+          const ps = r.playerStats?.[id];
+          if (ps) { p.pts += ps.pointsContributed ?? 0; p.net += ps.netUnderPar ?? 0; }
+          p.skins += (r.playerSkins?.[id] ?? 0) as number;
+          if (!p.fmtRec[m.format]) p.fmtRec[m.format]={W:0,L:0,H:0};
+          if (halve) p.fmtRec[m.format].H++; else if (won) p.fmtRec[m.format].W++; else p.fmtRec[m.format].L++;
+          for (const pid2 of ids) {
+            if (pid2===id) continue;
+            if (!p.partners[pid2]) p.partners[pid2]={W:0,L:0,H:0,pts:0};
+            if (halve) p.partners[pid2].H++; else if (won) p.partners[pid2].W++; else p.partners[pid2].L++;
+            p.partners[pid2].pts += ps?.pointsContributed ?? 0;
+          }
+        }
+      }
+    }
+
+    // ── Partnerships list ────────────────────────────────────────────────────
+    const pairMap: Record<string,{ids:string[];names:string[];W:number;L:number;H:number;pts:number;fmts:string[]}> = {};
+    for (const r of completedResults) {
+      const m = matchMap.get(r.matchId); if (!m) continue;
+      const t1p = r.teamPoints.team1 ?? 0; const t2p = r.teamPoints.team2 ?? 0; const halve = t1p===t2p;
+      for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
+        const ids = (rawIds as string[]).filter(Boolean); if (ids.length < 2) continue;
+        const key = [...ids].sort().join('|');
+        const isT1 = pk.startsWith('t1'); const won = isT1 ? t1p>t2p : t2p>t1p;
+        if (!pairMap[key]) pairMap[key]={ids,names:ids.map(id=>allPlayers.find(p=>p.id===id)?.name??'?'),W:0,L:0,H:0,pts:0,fmts:[]};
+        const pair = pairMap[key];
+        if (halve) pair.H++; else if (won) pair.W++; else pair.L++;
+        pair.pts += ids.reduce((s,id)=>s+(r.playerStats?.[id]?.pointsContributed??0),0)/ids.length;
+        if (!pair.fmts.includes(m.format)) pair.fmts.push(m.format);
+      }
+    }
+    const partnerships = Object.values(pairMap).sort((a,b)=>b.pts-a.pts||b.W-a.W);
+
+    // ── Sorted player list ───────────────────────────────────────────────────
+    const sortedPlayers = [...allPlayers].sort((a,b)=>{
+      const pa=pd[a.id], pb=pd[b.id];
+      return (pb?.pts??0)-(pa?.pts??0)||(pb?.W??0)-(pa?.W??0)||(pb?.net??0)-(pa?.net??0);
+    });
+
+    const recLabel = (w:number,l:number,h:number) => `${w}-${l}${h?`-${h}`:''}`;
+    const winPct   = (w:number,l:number,h:number) => {
+      const t = w+l+h; if (!t) return '—';
+      return Math.round(((w+(h*0.5))/t)*100)+'%';
+    };
+
+    const TabBtn = ({id,label}:{id:'overview'|'players'|'partnerships';label:string}) => (
+      <button onClick={()=>setStatsTab(id)}
+        className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all ${statsTab===id?'bg-white/15 text-white':'text-white/40 hover:text-white/70'}`}>
+        {label}
+      </button>
     );
-    
-    const played=tData.matchResults?.length||0;
-    const remaining=(tData.matches?.length||0)-played;
 
     return (
       <BG>
-        <TopBar title="Standings"/>
-        <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
+        <TopBar title="Stats"/>
+        <div className="max-w-2xl mx-auto p-4 pb-8 safe-bottom space-y-3">
 
-          {/* Championship Score Display */}
-          <div className="relative rounded-3xl overflow-hidden p-6 card-dark glow-blue">
-            <div className="absolute inset-0 opacity-5 flex items-center justify-center">
-              <div className="text-blue-600"><BlockW size={180}/></div>
-            </div>
-            <div className="relative flex items-center justify-between">
-              <div className="text-center flex-1">
-                <div className="font-bebas font-black text-6xl text-blue-200 leading-none drop-shadow-lg">{t1pts}</div>
-                <div className="font-bebas font-bold text-blue-300 text-lg mt-1">{tData?.teamNames?.team1??'Team 1'}</div>
-                {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t1pts).toFixed(1)} to win</div>}
-              </div>
-              <div className="text-center px-4">
-                <div className="text-white/20 font-bebas text-2xl font-bold">VS</div>
-                <div className="text-[#C9A227]/70 text-xs mt-1">{possiblePts}pts total</div>
-                <div className="text-white/30 text-xs">{played} played</div>
-                <div className="text-white/30 text-xs">{remaining} left</div>
-              </div>
-              <div className="text-center flex-1">
-                <div className="font-bebas font-black text-6xl text-red-200 leading-none drop-shadow-lg">{t2pts}</div>
-                <div className="font-bebas font-bold text-red-300 text-lg mt-1">{tData?.teamNames?.team2??'Team 2'}</div>
-                {possiblePts>0&&<div className="text-xs text-white/30 mt-1">{Math.max(0,toWin-t2pts).toFixed(1)} to win</div>}
-              </div>
-            </div>
-            <div className="relative mt-4 text-center">
-              <div className="text-xs text-[#C9A227]/60 font-bold tracking-widest">WIN AT {toWin.toFixed(1)} POINTS</div>
-            </div>
+          {/* Tab bar */}
+          <div className="flex gap-1 p-1 rounded-2xl" style={{background:'rgba(255,255,255,0.06)'}}>
+            <TabBtn id="overview"      label="Overview"/>
+            <TabBtn id="players"       label="Players"/>
+            <TabBtn id="partnerships"  label="Partnerships"/>
           </div>
 
-          {/* Match Results */}
-          {(tData.matchResults??[]).map((r,i)=>{
-            const m=getMatch(r.matchId); if(!m) return null;
-            const t1won = r.teamPoints.team1 > r.teamPoints.team2;
-            const t2won = r.teamPoints.team2 > r.teamPoints.team1;
-            return (
-              <div key={i} className="p-4 rounded-2xl card-dark">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-bold text-white text-sm">{FORMATS[m.format]?.name} · {m.startHole===1?'Front':'Back'} 9</div>
-                    <div className="text-xs text-white/30">{new Date(r.completedAt).toLocaleDateString()}</div>
+          {/* ── OVERVIEW TAB ─────────────────────────────────────────────── */}
+          {statsTab==='overview'&&(<>
+
+            {/* Championship scoreboard */}
+            <div className="relative rounded-3xl overflow-hidden p-6 card-dark glow-blue">
+              <div className="relative flex items-center justify-between">
+                <div className="text-center flex-1">
+                  <div className="font-bebas font-black text-6xl text-blue-200 leading-none">{t1pts}</div>
+                  <div className="font-bebas font-bold text-blue-300 text-lg mt-1">{team1Name}</div>
+                </div>
+                <div className="text-center px-4">
+                  <div className="text-white/20 font-bebas text-2xl font-bold">VS</div>
+                  <div className="text-[#C9A227]/70 text-xs mt-1">{possiblePts}pts total</div>
+                  <div className="text-white/30 text-xs">{completedResults.length} played</div>
+                </div>
+                <div className="text-center flex-1">
+                  <div className="font-bebas font-black text-6xl text-red-200 leading-none">{t2pts}</div>
+                  <div className="font-bebas font-bold text-red-300 text-lg mt-1">{team2Name}</div>
+                </div>
+              </div>
+              <div className="mt-3 text-center text-xs text-[#C9A227]/60 font-bold tracking-widest">WIN AT {toWin.toFixed(1)} POINTS</div>
+            </div>
+
+            {/* Team comparison */}
+            {completedResults.length>0&&(
+              <div className="rounded-2xl card-dark p-4 space-y-3">
+                <div className="text-xs font-bold text-white/30 tracking-widest uppercase mb-1">Team Comparison</div>
+                {([
+                  ['Match Record', recLabel(teamRec.team1.W,teamRec.team1.L,teamRec.team1.H), recLabel(teamRec.team2.W,teamRec.team2.L,teamRec.team2.H)],
+                  ['Win %', winPct(teamRec.team1.W,teamRec.team1.L,teamRec.team1.H), winPct(teamRec.team2.W,teamRec.team2.L,teamRec.team2.H)],
+                  ['Points', teamRec.team1.pts.toFixed(1), teamRec.team2.pts.toFixed(1)],
+                  ['Skins Won', teamRec.team1.skins.toFixed(1), teamRec.team2.skins.toFixed(1)],
+                ] as const).map(([label,v1,v2])=>(
+                  <div key={label} className="flex items-center gap-2">
+                    <span className={`text-sm font-bold w-20 text-right ${String(v1)>String(v2)?'text-blue-300':'text-white/60'}`}>{v1}</span>
+                    <span className="flex-1 text-center text-xs text-white/30">{label}</span>
+                    <span className={`text-sm font-bold w-20 ${String(v2)>String(v1)?'text-red-300':'text-white/60'}`}>{v2}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-center">
-                    <div>
-                      <div className={`font-bebas font-black text-2xl ${t1won?'text-blue-600':'text-gray-400'}`}>{r.teamPoints.team1}</div>
-                      <div className="text-xs text-blue-600">{tData?.teamNames?.team1??'Team 1'}</div>
+                ))}
+                {/* Holes won bar */}
+                {totalHoles>0&&(
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-sm font-bold w-20 text-right text-blue-300">{teamRec.team1.holes}</span>
+                      <span className="flex-1 text-center text-xs text-white/30">Holes Won</span>
+                      <span className="text-sm font-bold w-20 text-red-300">{teamRec.team2.holes}</span>
                     </div>
-                    <div className="text-white/20 font-bold">–</div>
+                    <div className="flex rounded-full overflow-hidden h-2">
+                      <div className="bg-blue-500 transition-all" style={{width:`${(teamRec.team1.holes/totalHoles)*100}%`}}/>
+                      <div className="bg-red-500 transition-all" style={{width:`${(teamRec.team2.holes/totalHoles)*100}%`}}/>
+                    </div>
+                    <div className="flex justify-between text-xs text-white/20 mt-1">
+                      <span>{Math.round((teamRec.team1.holes/totalHoles)*100)}%</span>
+                      <span>{Math.round((teamRec.team2.holes/totalHoles)*100)}%</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Format breakdown */}
+            {Object.keys(fmtBreak).length>0&&(
+              <div className="rounded-2xl card-dark p-4">
+                <div className="text-xs font-bold text-white/30 tracking-widest uppercase mb-3">Points by Format</div>
+                <div className="space-y-2">
+                  {Object.entries(fmtBreak).map(([fmt,fb])=>{
+                    const total = fb.t1pts+fb.t2pts; if (!total) return null;
+                    const t1w = (fb.t1pts/total)*100;
+                    return (
+                      <div key={fmt}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-blue-300 font-bold">{fb.t1pts.toFixed(1)}</span>
+                          <span className="text-white/50">{fb.name} <span className="text-white/30">({fb.count})</span></span>
+                          <span className="text-red-300 font-bold">{fb.t2pts.toFixed(1)}</span>
+                        </div>
+                        <div className="flex rounded-full overflow-hidden h-1.5">
+                          <div className="bg-blue-500" style={{width:`${t1w}%`}}/>
+                          <div className="bg-red-500" style={{width:`${100-t1w}%`}}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Match results */}
+            {completedResults.map((r,i)=>{
+              const m=getMatch(r.matchId); if(!m) return null;
+              const t1won=r.teamPoints.team1>r.teamPoints.team2;
+              const t2won=r.teamPoints.team2>r.teamPoints.team1;
+              return (
+                <div key={i} className="p-4 rounded-2xl card-dark">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <div className={`font-bebas font-black text-2xl ${t2won?'text-red-600':'text-gray-400'}`}>{r.teamPoints.team2}</div>
-                      <div className="text-xs text-red-600">{tData?.teamNames?.team2??'Team 2'}</div>
+                      <div className="font-bold text-white text-sm">{FORMATS[m.format]?.name} · {m.startHole===1?'Front':'Back'} 9</div>
+                      <div className="text-xs text-white/30">{new Date(r.completedAt).toLocaleDateString()}</div>
+                      <div className="text-xs text-white/20 mt-0.5">Holes: {team1Name} {r.team1HolesWon}–{r.team2HolesWon} {team2Name}</div>
+                    </div>
+                    <div className="flex items-center gap-3 text-center">
+                      <div><div className={`font-bebas font-black text-2xl ${t1won?'text-blue-400':'text-gray-500'}`}>{r.teamPoints.team1}</div><div className="text-xs text-blue-400/70">{team1Name}</div></div>
+                      <div className="text-white/20 font-bold">–</div>
+                      <div><div className={`font-bebas font-black text-2xl ${t2won?'text-red-400':'text-gray-500'}`}>{r.teamPoints.team2}</div><div className="text-xs text-red-400/70">{team2Name}</div></div>
                     </div>
                   </div>
                 </div>
-              </div>
-          );
-          })}
+              );
+            })}
+            {!completedResults.length&&<div className="text-center text-white/30 py-12 text-sm">No completed matches yet</div>}
+          </>)}
 
-          {/* MVP Race */}
-          <Card className="p-4">
-            <div className="flex items-center gap-2 mb-4">
-              <Award className="w-5 h-5 text-yellow-600"/>
-              <h2 className="font-bebas font-bold text-white text-xl">MVP Race</h2>
-              {livePlayerStats !== (tData?.players ?? []) && (
-                <span className="text-xs font-bold text-emerald-400 animate-pulse">● live</span>
-              )}
-            </div>
-            <div className="space-y-2">
-              {contribs.map((p,i)=>{
-                const isTop = i===0;
-                const isT1 = (tData?.teams?.team1??[]).includes(p.id);
-                return (
-                  <div key={p.id} className={`p-3 rounded-xl border transition-all ${isTop?'border-yellow-500/50':'border-white/10'}`} style={{background:isTop?'rgba(201,162,39,0.12)':'rgba(255,255,255,0.04)'}}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-xl shrink-0">{i===0?'🏆':i===1?'🥈':i===2?'🥉':`${i+1}`}</span>
-                        <div className="min-w-0">
-                          <div className={`font-bebas font-bold truncate ${isTop?'text-yellow-200':'text-white'}`}>{p.name}</div>
-                          <div className={`text-xs ${isT1?'text-blue-600':'text-red-600'}`}>{isT1?tData?.teamNames?.team1??'Team 1':tData?.teamNames?.team2??'Team 2'}</div>
-                        </div>
+          {/* ── PLAYERS TAB ──────────────────────────────────────────────── */}
+          {statsTab==='players'&&(<>
+            {sortedPlayers.map((player,rank)=>{
+              const p = pd[player.id];
+              const isT1 = team1Ids.has(player.id);
+              const teamTotal = isT1 ? teamRec.team1.pts : teamRec.team2.pts;
+              const contribPct = teamTotal>0 ? Math.round((p.pts/teamTotal)*100) : 0;
+              const netPerMatch = p.matchesPlayed>0 ? (p.net/p.matchesPlayed).toFixed(1) : '—';
+              const bestPartner = Object.entries(p.partners).sort((a,b)=>
+                (b[1].W+(b[1].H*0.5))-(a[1].W+(a[1].H*0.5))
+              )[0];
+              const bestPartnerName = bestPartner ? allPlayers.find(x=>x.id===bestPartner[0])?.name : null;
+              return (
+                <div key={player.id} className="rounded-2xl card-dark overflow-hidden">
+                  {/* Header */}
+                  <div className={`px-4 py-3 flex items-center justify-between border-b border-white/5`}>
+                    <div className="flex items-center gap-3">
+                      <span className="font-bebas font-bold text-2xl text-white/20">#{rank+1}</span>
+                      <div>
+                        <div className="font-bebas font-bold text-white text-lg leading-none">{player.name}</div>
+                        <div className={`text-xs font-semibold ${isT1?'text-blue-400':'text-red-400'}`}>{isT1?team1Name:team2Name}</div>
                       </div>
-                      <div className="flex gap-3 text-center text-xs shrink-0">
-                        {([
-                          ['Pts', p.pts.toFixed(1), 'text-emerald-400'],
-                          ['Net↓', p.net, 'text-purple-400'],
-                          ['Skins', p.skins.toFixed(1), 'text-yellow-400'],
-                          ['W/P', `${p.stats?.matchesWon||0}/${p.stats?.matchesPlayed||0}`, 'text-blue-600'],
-                        ] as const).map(([l,v,c])=>(
-                          <div key={l}>
-                            <div className="text-white/30 mb-0.5">{l}</div>
-                            <div className={`font-bold ${c}`}>{v}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bebas font-black text-2xl text-emerald-400 leading-none">{p.pts.toFixed(1)}</div>
+                      <div className="text-xs text-white/30">pts</div>
+                    </div>
+                  </div>
+                  {/* Stats grid */}
+                  <div className="grid grid-cols-4 divide-x divide-white/5">
+                    {([
+                      ['Record', recLabel(p.W,p.L,p.H), p.W>p.L?'text-emerald-400':p.L>p.W?'text-red-400':'text-white/60'],
+                      ['Win %', winPct(p.W,p.L,p.H), 'text-white'],
+                      ['Skins', p.skins.toFixed(1), 'text-yellow-400'],
+                      ['Contrib', teamTotal>0?`${contribPct}%`:'—', 'text-purple-400'],
+                    ] as const).map(([lbl,val,col])=>(
+                      <div key={lbl} className="py-3 text-center">
+                        <div className={`font-bebas font-bold text-lg leading-none ${col}`}>{val}</div>
+                        <div className="text-xs text-white/30 mt-0.5">{lbl}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Secondary stats */}
+                  {p.matchesPlayed>0&&(
+                    <div className="px-4 py-3 border-t border-white/5 space-y-2">
+                      {/* Net under par */}
+                      <div className="flex justify-between text-xs">
+                        <span className="text-white/40">Net birdies or better</span>
+                        <span className="font-bold text-purple-300">{p.net} holes ({netPerMatch}/match)</span>
+                      </div>
+                      {/* Best partner */}
+                      {bestPartnerName&&(
+                        <div className="flex justify-between text-xs">
+                          <span className="text-white/40">Best partner</span>
+                          <span className="font-bold text-white/70">{bestPartnerName} <span className="text-white/30">({recLabel(bestPartner![1].W,bestPartner![1].L,bestPartner![1].H)})</span></span>
+                        </div>
+                      )}
+                      {/* Format breakdown */}
+                      {Object.keys(p.fmtRec).length>0&&(
+                        <div>
+                          <div className="text-xs text-white/30 mb-1.5">By Format</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(p.fmtRec).map(([fmt,rec])=>(
+                              <span key={fmt} className={`text-xs px-2 py-0.5 rounded-lg font-bold ${rec.W>rec.L?'bg-emerald-900/40 text-emerald-300':rec.L>rec.W?'bg-red-900/40 text-red-300':'bg-white/5 text-white/40'}`}>
+                                {FORMATS[fmt]?.name??fmt}: {recLabel(rec.W,rec.L,rec.H)}
+                              </span>
+                            ))}
                           </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {p.matchesPlayed===0&&<div className="px-4 py-3 text-xs text-white/20 text-center border-t border-white/5">No matches played yet</div>}
+                </div>
+              );
+            })}
+          </>)}
+
+          {/* ── PARTNERSHIPS TAB ─────────────────────────────────────────── */}
+          {statsTab==='partnerships'&&(<>
+            {partnerships.length===0&&<div className="text-center text-white/30 py-12 text-sm">No partnerships recorded yet</div>}
+            {partnerships.map((pair,i)=>{
+              const isT1 = team1Ids.has(pair.ids[0]);
+              const total = pair.W+pair.L+pair.H;
+              const wpct = total ? Math.round(((pair.W+(pair.H*0.5))/total)*100) : 0;
+              return (
+                <div key={i} className="rounded-2xl card-dark overflow-hidden">
+                  <div className="px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <div className="font-bebas font-bold text-white text-lg leading-tight">{pair.names.join(' & ')}</div>
+                      <div className={`text-xs font-semibold ${isT1?'text-blue-400':'text-red-400'}`}>{isT1?team1Name:team2Name}</div>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {pair.fmts.map(f=>(
+                          <span key={f} className="text-xs text-white/30 bg-white/5 px-1.5 py-0.5 rounded">{FORMATS[f]?.name??f}</span>
                         ))}
                       </div>
                     </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bebas font-black text-2xl text-emerald-400 leading-none">{pair.pts.toFixed(1)}</div>
+                      <div className="text-xs text-white/30">pts avg</div>
+                    </div>
                   </div>
-                );
-              })}
-              {!contribs.length&&<div className="text-center text-white/30 py-8">No player data yet</div>}
-            </div>
-          </Card>
+                  <div className="grid grid-cols-4 divide-x divide-white/5 border-t border-white/5">
+                    {([
+                      ['Record', recLabel(pair.W,pair.L,pair.H), pair.W>pair.L?'text-emerald-400':pair.L>pair.W?'text-red-400':'text-white/60'],
+                      ['W', String(pair.W), 'text-emerald-400'],
+                      ['L', String(pair.L), 'text-red-400'],
+                      ['Win %', `${wpct}%`, 'text-white'],
+                    ] as const).map(([lbl,val,col])=>(
+                      <div key={lbl} className="py-2.5 text-center">
+                        <div className={`font-bebas font-bold text-lg leading-none ${col}`}>{val}</div>
+                        <div className="text-xs text-white/30 mt-0.5">{lbl}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </>)}
+
         </div>
       </BG>
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // SKINS SCREEN - Per-course skins breakdown with pot calculation
+
+    // SKINS SCREEN - Per-course skins breakdown with pot calculation
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='skins') {
     if (!tData) return <BG><TopBar title="Skins"/><div className="p-4 text-white/50 text-center">Loading...</div></BG>;
