@@ -881,6 +881,174 @@ const SkinsCard = memo(({ course, holeResults, playerSummary, totalSkins, potUni
 SkinsCard.displayName = 'SkinsCard';
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// EXPORT UTILITIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function downloadFile(filename: string, content: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportTournamentJSON(tData: Tournament) {
+  const year = new Date().getFullYear();
+  const slug = tData.name.replace(/\s+/g,'-').toLowerCase();
+  downloadFile(
+    `${slug}-${year}.json`,
+    JSON.stringify(tData, null, 2),
+    'application/json'
+  );
+}
+
+function exportTournamentCSV(tData: Tournament) {
+  const year  = new Date().getFullYear();
+  const slug  = tData.name.replace(/\s+/g,'-').toLowerCase();
+  const rows: string[][] = [];
+  const esc   = (v: unknown) => `"${String(v ?? '').replace(/"/g,'""')}"`;
+  const row   = (...cells: unknown[]) => rows.push(cells.map(String));
+  const blank = () => rows.push([]);
+  const head  = (...cells: unknown[]) => rows.push(cells.map(c => String(c).toUpperCase()));
+
+  const matchResults = tData.matchResults ?? [];
+  const matches      = tData.matches ?? [];
+  const players      = tData.players ?? [];
+  const team1Ids     = new Set(tData.teams?.team1 ?? []);
+  const team2Ids     = new Set(tData.teams?.team2 ?? []);
+  const team1Name    = tData.teamNames?.team1 ?? 'Team 1';
+  const team2Name    = tData.teamNames?.team2 ?? 'Team 2';
+  const matchMap     = new Map<string,Match>(matches.map(m => [m.id, m]));
+
+  // ── Section 1: Tournament summary ─────────────────────────────────────────
+  head('TOURNAMENT SUMMARY');
+  row('Tournament',   tData.name);
+  row('Year',         year);
+  row('Export Date',  new Date().toLocaleDateString());
+  row('Tournament ID', tData.id);
+  row('Team 1',       team1Name);
+  row('Team 2',       team2Name);
+  const t1pts = matchResults.reduce((s,r)=>s+(r.teamPoints?.team1??0),0);
+  const t2pts = matchResults.reduce((s,r)=>s+(r.teamPoints?.team2??0),0);
+  row('Team 1 Total Points', t1pts.toFixed(1));
+  row('Team 2 Total Points', t2pts.toFixed(1));
+  const winner = t1pts > t2pts ? team1Name : t2pts > t1pts ? team2Name : 'Tied';
+  row('Winner', winner);
+  row('Matches Played', matchResults.length);
+  row('Matches Remaining', matches.length - matchResults.length);
+  blank();
+
+  // ── Section 2: Match results ───────────────────────────────────────────────
+  head('MATCH RESULTS');
+  row('Date','Format','Course/Tee','Start Hole','Holes',`${team1Name} Pts`,`${team2Name} Pts`,'Winner','T1 Holes Won','T2 Holes Won','Total Holes');
+  for (const r of matchResults) {
+    const m = matchMap.get(r.matchId);
+    const fmt = m ? (FORMATS[m.format]?.name ?? m.format) : r.format;
+    const course = m ? `${m.courseId ?? ''}/${m.teeId ?? ''}` : '';
+    const t1p = r.teamPoints?.team1 ?? 0;
+    const t2p = r.teamPoints?.team2 ?? 0;
+    const w   = t1p > t2p ? team1Name : t2p > t1p ? team2Name : 'Halved';
+    row(new Date(r.completedAt).toLocaleDateString(), fmt, course,
+        m?.startHole ?? '', r.holes, t1p.toFixed(1), t2p.toFixed(1), w,
+        r.team1HolesWon ?? '', r.team2HolesWon ?? '',
+        (r.team1HolesWon??0)+(r.team2HolesWon??0));
+  }
+  blank();
+
+  // ── Section 3: Player statistics ──────────────────────────────────────────
+  head('PLAYER STATISTICS');
+  row('Player','Team','Matches Played','Wins','Losses','Halves','Win %',
+      'Points','Contribution %','Skins Won','Net Birdies/Better',
+      'Net Birdies per Match','Best Format','Best Format Record');
+
+  // Compute per-player stats
+  const pd: Record<string,{W:number;L:number;H:number;pts:number;skins:number;net:number;mp:number;fmtRec:Record<string,{W:number;L:number;H:number}>}> = {};
+  players.forEach(p => { pd[p.id]={W:0,L:0,H:0,pts:0,skins:0,net:0,mp:0,fmtRec:{}}; });
+  const teamTotals: Record<string,number> = { team1: 0, team2: 0 };
+
+  for (const r of matchResults) {
+    const m = matchMap.get(r.matchId); if (!m) continue;
+    const t1p = r.teamPoints?.team1 ?? 0;
+    const t2p = r.teamPoints?.team2 ?? 0;
+    const halve = t1p === t2p;
+    teamTotals.team1 += t1p; teamTotals.team2 += t2p;
+    for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
+      const ids = (rawIds as string[]).filter(Boolean); if (!ids.length) continue;
+      const isT1 = pk.startsWith('t1');
+      const won  = isT1 ? t1p > t2p : t2p > t1p;
+      for (const id of ids) {
+        const p = pd[id]; if (!p) continue;
+        p.mp++;
+        if (halve) p.H++; else if (won) p.W++; else p.L++;
+        const ps = r.playerStats?.[id];
+        if (ps) { p.pts += ps.pointsContributed ?? 0; p.net += ps.netUnderPar ?? 0; }
+        p.skins += (r.playerSkins?.[id] ?? 0) as number;
+        if (!p.fmtRec[m.format]) p.fmtRec[m.format]={W:0,L:0,H:0};
+        if (halve) p.fmtRec[m.format].H++; else if (won) p.fmtRec[m.format].W++; else p.fmtRec[m.format].L++;
+      }
+    }
+  }
+
+  for (const p of [...players].sort((a,b)=>(pd[b.id]?.pts??0)-(pd[a.id]?.pts??0))) {
+    const s = pd[p.id]; if (!s) continue;
+    const isT1 = team1Ids.has(p.id);
+    const teamTotal = isT1 ? teamTotals.team1 : teamTotals.team2;
+    const contrib   = teamTotal > 0 ? ((s.pts / teamTotal)*100).toFixed(1)+'%' : '—';
+    const total     = s.W + s.L + s.H;
+    const winPct    = total ? (((s.W + s.H*0.5)/total)*100).toFixed(1)+'%' : '—';
+    const netPM     = s.mp > 0 ? (s.net/s.mp).toFixed(2) : '—';
+    const bestFmt   = Object.entries(s.fmtRec).sort((a,b)=>(b[1].W+b[1].H*0.5)-(a[1].W+a[1].H*0.5))[0];
+    const bestFmtName = bestFmt ? (FORMATS[bestFmt[0]]?.name ?? bestFmt[0]) : '—';
+    const bestFmtRec  = bestFmt ? `${bestFmt[1].W}-${bestFmt[1].L}${bestFmt[1].H?`-${bestFmt[1].H}`:''}` : '—';
+    row(p.name, isT1?team1Name:team2Name, s.mp, s.W, s.L, s.H, winPct,
+        s.pts.toFixed(1), contrib, s.skins.toFixed(1), s.net, netPM,
+        bestFmtName, bestFmtRec);
+  }
+  blank();
+
+  // ── Section 4: Partnership records ────────────────────────────────────────
+  head('PARTNERSHIP RECORDS');
+  row('Player 1','Player 2','Team','Formats Played','Matches','Wins','Losses','Halves','Win %','Points Avg');
+
+  const pairMap: Record<string,{ids:string[];W:number;L:number;H:number;pts:number;fmts:string[]}> = {};
+  for (const r of matchResults) {
+    const m = matchMap.get(r.matchId); if (!m) continue;
+    const t1p = r.teamPoints?.team1 ?? 0; const t2p = r.teamPoints?.team2 ?? 0; const halve = t1p===t2p;
+    for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
+      const ids = (rawIds as string[]).filter(Boolean); if (ids.length < 2) continue;
+      const key = [...ids].sort().join('|');
+      const isT1 = pk.startsWith('t1'); const won = isT1 ? t1p>t2p : t2p>t1p;
+      if (!pairMap[key]) pairMap[key]={ids,W:0,L:0,H:0,pts:0,fmts:[]};
+      const pair = pairMap[key];
+      if (halve) pair.H++; else if (won) pair.W++; else pair.L++;
+      pair.pts += ids.reduce((s,id)=>s+(r.playerStats?.[id]?.pointsContributed??0),0)/ids.length;
+      if (!pair.fmts.includes(m.format)) pair.fmts.push(m.format);
+    }
+  }
+  for (const pair of Object.values(pairMap).sort((a,b)=>b.pts-a.pts)) {
+    const total = pair.W+pair.L+pair.H;
+    const winPct = total ? (((pair.W+pair.H*0.5)/total)*100).toFixed(1)+'%' : '—';
+    const names  = pair.ids.map(id=>players.find(p=>p.id===id)?.name??'?');
+    const isT1   = team1Ids.has(pair.ids[0]);
+    const fmts   = pair.fmts.map(f=>FORMATS[f]?.name??f).join(', ');
+    row(names[0], names[1], isT1?team1Name:team2Name, fmts, total,
+        pair.W, pair.L, pair.H, winPct, (pair.pts/Math.max(total,1)).toFixed(2));
+  }
+  blank();
+
+  // ── Section 5: Player roster ───────────────────────────────────────────────
+  head('PLAYER ROSTER');
+  row('Name','Team','Handicap Index');
+  for (const p of players) {
+    row(p.name, team1Ids.has(p.id)?team1Name:team2Name, p.handicapIndex);
+  }
+
+  // ── Serialise to CSV ───────────────────────────────────────────────────────
+  const csv = rows.map(r => r.map(esc).join(',')).join('\n');
+  downloadFile(`${slug}-${year}-stats.csv`, csv, 'text/csv');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════════
 function GolfScoringApp() {
@@ -2547,6 +2715,21 @@ function GolfScoringApp() {
               </div>
             </div>
           ))}
+        </div>
+
+
+        {/* ── Export Tournament Data ──────────────────────────────────── */}
+        <div className="rounded-2xl p-4 card-dark">
+          <div className="text-xs font-semibold text-white/50 mb-3 block tracking-widest uppercase">Export Tournament Data</div>
+          <p className="text-xs text-white/30 mb-4">Download a complete snapshot of this tournament for historical records, year-by-year tracking, or external analysis.</p>
+          <div className="flex gap-2">
+            <button onClick={()=>exportTournamentJSON(tData)} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-sm border border-white/10 hover:border-[#C9A227]/60 text-white/70 hover:text-[#C9A227] transition-all" style={{background:'rgba(255,255,255,0.05)'}}>
+              <span>⬇</span> JSON
+            </button>
+            <button onClick={()=>exportTournamentCSV(tData)} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-sm border border-white/10 hover:border-emerald-500/60 text-white/70 hover:text-emerald-400 transition-all" style={{background:'rgba(255,255,255,0.05)'}}>
+              <span>⬇</span> CSV / Spreadsheet
+            </button>
+          </div>
         </div>
 
         <Btn color="gold" onClick={()=>setScreen('tournament')} className="w-full flex items-center justify-center gap-2 py-4">
