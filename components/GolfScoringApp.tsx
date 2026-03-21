@@ -28,7 +28,7 @@ interface MatchResult {
   playerStats?: Record<string,{pointsContributed:number;netUnderPar:number;matchWon:boolean}>;
 }
 interface Tournament {
-  id: string; name: string; passcode: string; adminPasscode: string;
+  id: string; name: string; passcode: string; adminPasscode: string; viewerPasscode?: string;
   courses: Course[]; activeCourseId: string; activeTeeId: string;
   teamNames: Record<string,string>; players: Player[];
   teams: Record<string,string[]>; matches: Match[]; matchResults: MatchResult[];
@@ -974,9 +974,12 @@ function GolfScoringApp() {
 
         // Verify the cached passcode is still valid (admin may have rotated it).
         const isAdmin = session.role === 'admin';
+        const isViewer = session.role === 'viewer';
         const pcOk = isAdmin
           ? session.passcode === data.adminPasscode
-          : session.passcode === data.passcode;
+          : isViewer
+            ? session.passcode === (data.viewerPasscode || 'view')
+            : session.passcode === data.passcode;
 
         if (!pcOk) {
           clearSession();
@@ -1286,7 +1289,7 @@ function GolfScoringApp() {
         {id:'p8',name:'Geoff',handicapIndex:26,stats:{matchesPlayed:0,matchesWon:0,pointsContributed:0,netUnderPar:0,skinsWon:0}},
       ];
       const data: Tournament = {
-        id, name:'Warrior Cup '+new Date().getFullYear(), passcode:pc, adminPasscode:adminPc,
+        id, name:'Warrior Cup '+new Date().getFullYear(), passcode:pc, adminPasscode:adminPc, viewerPasscode:'view',
         courses:PRESET_COURSES, activeCourseId:'hawks_landing', activeTeeId:'Black',
         teamNames:{team1:'Team 1',team2:'Team 2'},
         players,
@@ -1326,10 +1329,12 @@ function GolfScoringApp() {
     const data = await loadTournament(tournId.toUpperCase().trim());
     if (!data) { setLoginErr('Tournament not found.'); setLoading(false); return; }
     if (asAdmin && passcode!==data.adminPasscode) { setLoginErr('Wrong admin passcode.'); setLoading(false); return; }
-    if (!asAdmin && passcode!==data.passcode) { setLoginErr('Wrong passcode.'); setLoading(false); return; }
-    setTData(data); setRole(asAdmin?'admin':'player');
+    const isViewer = !asAdmin && !!data.viewerPasscode && passcode===(data.viewerPasscode||'view');
+    if (!asAdmin && !isViewer && passcode!==data.passcode) { setLoginErr('Wrong passcode.'); setLoading(false); return; }
+    const resolvedRole = asAdmin ? 'admin' : isViewer ? 'viewer' : 'player';
+    setTData(data); setRole(resolvedRole);
     setTournId(tournId.toUpperCase().trim());
-    saveSession(tournId.toUpperCase().trim(), passcode, asAdmin?'admin':'player');
+    saveSession(tournId.toUpperCase().trim(), passcode, resolvedRole);
     setScreen(asAdmin?'admin':'tournament'); setLoading(false);
   };
 
@@ -2063,7 +2068,7 @@ function GolfScoringApp() {
         </div>
       </div>
       <div className="flex gap-1.5 items-center shrink-0">
-        <Badge color={role==='admin'?'gold':'blue'}>{role==='admin'?'Admin':'Player'}</Badge>
+        <Badge color={role==='admin'?'gold':role==='viewer'?'green':'blue'}>{role==='admin'?'Admin':role==='viewer'?'Viewer':'Player'}</Badge>
         {role==='admin'&&screen!=='admin'&&(
           <button onClick={()=>setScreen('admin')} className="text-white/40 hover:text-white text-sm min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-white/10 hover:border-white/30">⚙</button>
         )}
@@ -2160,7 +2165,8 @@ function GolfScoringApp() {
                     const data = await loadTournament(savedSession.tournId);
                     if (!data) { clearSession(); setLoginErr('Tournament no longer found. Please join manually.'); setLoading(false); return; }
                     const isAdmin = savedSession.role==='admin';
-                    const pcOk = isAdmin ? savedSession.passcode===data.adminPasscode : savedSession.passcode===data.passcode;
+                    const isViewerR = savedSession.role==='viewer';
+                    const pcOk = isAdmin ? savedSession.passcode===data.adminPasscode : isViewerR ? savedSession.passcode===(data.viewerPasscode||'view') : savedSession.passcode===data.passcode;
                     if (!pcOk) { clearSession(); setLoginErr('Session expired. Please log in again.'); setLoading(false); return; }
                     setTournId(savedSession.tournId); setPasscode(savedSession.passcode); setRole(savedSession.role); setTData(data);
                     setScreen(isAdmin?'admin':'tournament');
@@ -2381,6 +2387,7 @@ function GolfScoringApp() {
               {label:'Tournament ID', value:tData.id, color:'text-[#C9A227]'},
               {label:'Player Code', value:tData.passcode, color:'text-blue-300'},
               {label:'Admin Code', value:tData.adminPasscode, color:'text-orange-300'},
+              {label:'Viewer Code', value:tData.viewerPasscode||'(not set)', color:'text-green-300'},
             ].map(({label,value,color})=>(
               <div key={label} className="rounded-xl p-3" style={{background:'rgba(0,0,0,0.3)'}}>
                 <div className="text-xs text-white/40 mb-1">{label}</div>
@@ -2388,6 +2395,16 @@ function GolfScoringApp() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Viewer Passcode */}
+        <div className="rounded-2xl p-4 card-dark">
+          <label className="text-xs font-semibold text-white/50 mb-2 block tracking-widest uppercase">Viewer Passcode <span className="normal-case text-white/30 font-normal">(share with spectators)</span></label>
+          <input value={tData.viewerPasscode??''} onChange={e=>updateTournament(d=>({...d,viewerPasscode:e.target.value.trim()||undefined}))}
+            placeholder="e.g. view (leave blank to disable viewer access)"
+            className="w-full px-4 py-3 rounded-xl text-white font-mono border border-white/10 focus:border-green-500/60 outline-none"
+            style={{background:'rgba(255,255,255,0.06)'}}/>
+          <div className="text-xs text-white/30 mt-1.5">Viewers can see live scoring & stats but cannot enter or edit scores.</div>
         </div>
 
         {/* Tournament Name */}
@@ -2743,6 +2760,15 @@ function GolfScoringApp() {
                   const saved=await loadMatchScores(m.id, m.holes);
                   setLocalScores({...init,...saved});setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
                 }}>▶ Play</Btn>
+              )}
+              {role==='viewer'&&(
+                <Btn color="ghost" sm onClick={async()=>{
+                  const saved=await loadMatchScores(m.id, m.holes);
+                  const init: Record<string,(number|null)[]>={};
+                  Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
+                  setLocalScores({...init,...saved});
+                  setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                }}>👁 Watch</Btn>
               )}
               {role==='player'&&!m.completed&&(
                 <Btn color="blue" sm onClick={async()=>{
@@ -3237,13 +3263,18 @@ function GolfScoringApp() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs text-white/30 font-bold tracking-wider uppercase">Team Score</div>
-                {teamScore!=null&&(
+                {teamScore!=null&&role!=='viewer'&&(
                   <button onClick={()=>ids.forEach(id=>setScore(id,currentHole,null))}
                     className="text-xs text-white/30 hover:text-red-400 font-bold px-2 py-1 rounded-lg border border-white/10 hover:border-red-400/40 transition-all min-h-[36px]">
                     Clear
                   </button>
                 )}
               </div>
+              {role==='viewer' ? (
+                <div className="text-center py-3 text-2xl font-bebas font-bold text-white/60">
+                  {teamScore!=null ? teamScore : '—'}
+                </div>
+              ) : (
               <div className="grid grid-cols-5 gap-2">
                 {[1,2,3,4,5,6,7,8,9,10].map(n=>{
                   const par = hd?.par ?? 4;
@@ -3258,6 +3289,7 @@ function GolfScoringApp() {
                   );
                 })}
               </div>
+              )}
             </div>
           ):(
             <div className="space-y-3">
@@ -3293,13 +3325,18 @@ function GolfScoringApp() {
                       <span className={`whitespace-nowrap ${playerSkinStrokes > 0 ? 'text-yellow-300' : 'text-white/20'}`}>
                         🏆 {playerSkinStrokes > 0 ? `Skin hdcp −${playerSkinStrokes}` : 'No skin stroke'}
                       </span>
-                      {sc !== null && (
+                      {sc !== null && role!=='viewer' && (
                         <button onClick={()=>setScore(id,currentHole,null)}
                           className="ml-auto text-xs text-white/25 hover:text-red-400 font-bold px-2 py-0.5 rounded-lg border border-white/10 hover:border-red-400/40 transition-all min-h-[28px]">
                           Clear
                         </button>
                       )}
                     </div>
+                    {role==='viewer' ? (
+                      <div className="text-center py-3 text-2xl font-bebas font-bold text-white/60">
+                        {sc!=null ? sc : '—'}
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-5 gap-2">
                       {[1,2,3,4,5,6,7,8,9,10].map(n=>{
                         const par = hd?.par ?? 4;
@@ -3314,6 +3351,7 @@ function GolfScoringApp() {
                         );
                       })}
                     </div>
+                    )}
                     {sc !== null && (
                       <div className="text-xs text-white/30 mt-1">
                         Skin net: <span className={playerSkinStrokes > 0 ? 'text-yellow-300 font-bold' : 'text-white/50'}>{sc - playerSkinStrokes}</span>
@@ -3611,7 +3649,7 @@ function GolfScoringApp() {
                 }} loading={scoringLoading} disabled={scoringLoading} className="flex-1 flex items-center justify-center gap-1">
                   Next<ChevronRight className="w-4 h-4"/>
                 </Btn>
-              : !editingScores
+              : !editingScores && role!=='viewer'
                 ? <Btn color="green" disabled={role==='player'||scoringLoading} loading={scoringLoading} onClick={async()=>{
                     if (!confirm('Mark this match as complete? Scores will be final.')) return;
                     setScoringLoading(true);
@@ -3640,6 +3678,7 @@ function GolfScoringApp() {
             </Btn>}
           </div>
           {role==='player'&&currentHole===m.holes&&<div className="text-center text-xs text-white/30">Only the admin can finalize the match</div>}
+          {role==='viewer'&&<div className="text-center text-xs text-white/30">Viewing in read-only mode</div>}
         </div>
       </BG>
     );
