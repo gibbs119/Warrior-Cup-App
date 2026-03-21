@@ -3570,8 +3570,11 @@ function GolfScoringApp() {
                 </div>
               ) : (
               <div className="grid grid-cols-5 gap-2">
-                {[1,2,3,4,5,6,7,8,9,10].map(n=>{
-                  const par = hd?.par ?? 4;
+                {(()=>{
+                  const par=hd?.par??4;
+                  const maxSt=Math.max(myStrokes,skinSt[pk]??0);
+                  const maxScore=2*par+maxSt;
+                  return Array.from({length:maxScore},(_,i)=>i+1).map(n=>{
                   const diff = n - par;
                   const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                   return (
@@ -3581,7 +3584,8 @@ function GolfScoringApp() {
                       {n}
                     </button>
                   );
-                })}
+                  });
+                })()}
               </div>
               )}
             </div>
@@ -3632,8 +3636,11 @@ function GolfScoringApp() {
                       </div>
                     ) : (
                     <div className="grid grid-cols-5 gap-2">
-                      {[1,2,3,4,5,6,7,8,9,10].map(n=>{
-                        const par = hd?.par ?? 4;
+                      {(()=>{
+                        const par=hd?.par??4;
+                        const maxSt=Math.max(playerStrokes[id]??0,playerSkinStrokes);
+                        const maxScore=2*par+maxSt;
+                        return Array.from({length:maxScore},(_,i)=>i+1).map(n=>{
                         const diff = n - par;
                         const relColor = diff <= -2 ? 'text-yellow-400' : diff === -1 ? 'text-red-300' : diff === 0 ? 'text-white' : diff === 1 ? 'text-blue-300' : 'text-blue-200';
                         return (
@@ -3643,7 +3650,8 @@ function GolfScoringApp() {
                             {n}
                           </button>
                         );
-                      })}
+                        });
+                      })()}
                     </div>
                     )}
                     {sc !== null && (
