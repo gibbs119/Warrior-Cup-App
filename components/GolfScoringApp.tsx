@@ -1257,8 +1257,6 @@ function GolfScoringApp() {
         clearTimeout(scoreSaveTimerRef.current);
         scoreSaveTimerRef.current = null;
       }
-      // Use sendBeacon if available (survives page unload), else fall back to fetch
-      const url = `https://firestore.googleapis.com`; // placeholder — we use the Firebase SDK below
       saveMatchScores(mid, scores).catch(err => console.error('Flush save failed:', err));
     };
 
@@ -1834,7 +1832,7 @@ function GolfScoringApp() {
       return {pk,ids:m.pairings[pk]??[],net:raw-(skinSt[pk]||0)};
     }).filter(Boolean) as {pk:string;ids:string[];net:number}[];
     let skinWinner=null;
-    if(skinNets.length>=4){const best=Math.min(...skinNets.map(x=>x.net));const w=skinNets.filter(x=>x.net===best);if(w.length===1)skinWinner=w[0];}
+    if(skinNets.length>0&&skinNets.length===allPkKeys.length){const best=Math.min(...skinNets.map(x=>x.net));const w=skinNets.filter(x=>x.net===best);if(w.length===1)skinWinner=w[0];}
     return {matchupResults,skinWinner,rank,hd};
   };
 
@@ -1853,8 +1851,11 @@ function GolfScoringApp() {
     // Determine if we should use global skins (across all matches) or per-match skins
     const useGlobalSkins = allMatches && allMatches.length > 0 && allScores && getTeeFunc;
     
+    let lastScoredHole = 0;
     for(let h=1;h<=m.holes;h++){
       const res=calcHoleResults(m,h,scores,tee); if(!res) continue;
+      const hasResult = res.matchupResults.some(r=>r.winner!==null);
+      if(hasResult) lastScoredHole=h;
       for(const r of res.matchupResults){if(r.winner==='t1p')t1++;else if(r.winner==='t2p')t2++;}
       
       // Calculate skins - use global calculation if available
@@ -1880,10 +1881,10 @@ function GolfScoringApp() {
         res.skinWinner.ids.forEach(id=>{playerSkins[id]=(playerSkins[id]||0)+v;});
       }
     }
-    const lead=Math.abs(t1-t2),rem=m.holes-currentHole;
+    const lead=Math.abs(t1-t2),rem=m.holes-lastScoredHole;
     let label='AS';
-    if(t1>t2) label=(lead>rem&&rem>=0)?`${lead}&${rem}`:`${lead}UP`;
-    else if(t2>t1) label=(lead>rem&&rem>=0)?`${lead}&${rem}`:`${lead}UP`;
+    if(t1>t2) label=(lead>rem&&rem>0)?`${lead}&${rem}`:`${lead}UP`;
+    else if(t2>t1) label=(lead>rem&&rem>0)?`${lead}&${rem}`:`${lead}UP`;
     return{t1Holes:t1,t2Holes:t2,label,leader:t1>t2?'team1':t2>t1?'team2':null,playerSkins};
   };
 
@@ -3043,7 +3044,10 @@ function GolfScoringApp() {
                   // Load any scores already entered by players so admin sees the
                   // current state immediately (same as the player "Enter Scores" path).
                   const saved=await loadMatchScores(m.id, m.holes);
-                  setLocalScores({...init,...saved});setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                  const merged={...init,...saved};
+                  const lastScored=Array.from({length:m.holes},(_,i)=>i).filter(i=>Object.values(merged).some(h=>h[i]!=null)).pop()??-1;
+                  const resumeAt=lastScored===-1?1:Math.min(lastScored+2,m.holes);
+                  setLocalScores(merged);setActiveMatchId(m.id);setCurrentHole(resumeAt);setScreen('scoring');
                 }}>▶ Play</Btn>
               )}
               {role==='viewer'&&(
@@ -3051,8 +3055,11 @@ function GolfScoringApp() {
                   const saved=await loadMatchScores(m.id, m.holes);
                   const init: Record<string,(number|null)[]>={};
                   Object.values(m.pairings??{}).filter(Array.isArray).flat().filter(Boolean).forEach(id=>{init[id]=Array(m.holes).fill(null);});
-                  setLocalScores({...init,...saved});
-                  setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                  const merged={...init,...saved};
+                  const lastScored=Array.from({length:m.holes},(_,i)=>i).filter(i=>Object.values(merged).some(h=>h[i]!=null)).pop()??-1;
+                  const resumeAt=lastScored===-1?1:Math.min(lastScored+2,m.holes);
+                  setLocalScores(merged);
+                  setActiveMatchId(m.id);setCurrentHole(resumeAt);setScreen('scoring');
                 }}>👁 Watch</Btn>
               )}
               {role==='player'&&!m.completed&&(
@@ -3071,8 +3078,10 @@ function GolfScoringApp() {
                     // and concurrent device entries are always preserved.
                     const merged:{[id:string]:(number|null)[]}={...init,...saved};
                     for(const[pid,holes]of Object.entries(backup)){if(!merged[pid])merged[pid]=Array(m.holes).fill(null);holes.forEach((v,i)=>{if(v!==null&&merged[pid][i]===null)merged[pid][i]=v;});}
+                    const lastScored=Array.from({length:m.holes},(_,i)=>i).filter(i=>Object.values(merged).some(h=>h[i]!=null)).pop()??-1;
+                    const resumeAt=lastScored===-1?1:Math.min(lastScored+2,m.holes);
                     setLocalScores(merged);
-                    setActiveMatchId(m.id);setCurrentHole(1);setScreen('scoring');
+                    setActiveMatchId(m.id);setCurrentHole(resumeAt);setScreen('scoring');
                   } finally {
                     setEnteringScores(false);
                   }
