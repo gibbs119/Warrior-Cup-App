@@ -2399,122 +2399,223 @@ function GolfScoringApp() {
   );
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // GLOSSARY SCREEN - Temporarily disabled due to hydration issues
+  // GLOSSARY SCREEN
   // ══════════════════════════════════════════════════════════════════════════════
   if (screen==='glossary') {
+    const GlossSection = ({title,children,accent}:{title:string;children?:React.ReactNode;accent?:string})=>(
+      <div className="rounded-2xl border p-4 space-y-3" style={{background:'rgba(255,255,255,0.04)',borderColor:accent||'rgba(255,255,255,0.10)'}}>
+        <div className="font-bebas font-bold text-white text-xl tracking-wide">{title}</div>
+        {children}
+      </div>
+    );
+    const HcpBox = ({children}:{children?:React.ReactNode})=>(
+      <div className="rounded-xl p-3 text-xs text-white/50 leading-relaxed space-y-1" style={{background:'rgba(255,255,255,0.05)'}}>
+        {children}
+      </div>
+    );
+    const FormulaRow = ({label,val}:{label:string;val:string})=>(
+      <div className="flex items-start gap-2">
+        <span className="text-white/30 shrink-0">▸</span>
+        <span><span className="text-white/60">{label}</span> <span className="text-[#C9A227] font-mono font-bold">{val}</span></span>
+      </div>
+    );
+    const ExRow = ({children}:{children?:React.ReactNode})=>(
+      <div className="rounded-xl p-2.5 text-xs text-white/40 leading-relaxed mt-1" style={{background:'rgba(201,162,39,0.06)'}}>
+        <span className="text-[#C9A227]/70 font-bold">Example · </span>{children}
+      </div>
+    );
     return (
       <BG>
         <TopBar title="Game Format Guide" back={()=>setScreen(tData?'tournament':'login')}/>
-        <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
+        <div className="max-w-2xl mx-auto p-4 space-y-4 pb-10" style={{paddingBottom:'calc(env(safe-area-inset-bottom) + 2.5rem)'}}>
 
-          {/* What ★ means */}
-          <div className="rounded-2xl border border-yellow-500/30 p-4" style={{background:'rgba(201,162,39,0.08)'}}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-yellow-400 font-bold text-xl">★</span>
-              <span className="font-bebas font-bold text-white text-xl">What does ★ mean?</span>
-            </div>
-            <p className="text-white/60 text-sm leading-relaxed mb-3">
-              A ★ means you receive a <span className="text-white font-bold">handicap stroke on that hole</span> — your gross score is reduced by 1 to get your net score. Strokes are assigned starting on the hardest holes (Rank 1 = hardest, Rank 18 = easiest). If your stroke allowance is 5, you receive strokes on the 5 hardest holes.
-            </p>
-            <div className="text-xs text-white/40 bg-white/5 rounded-xl p-3 leading-relaxed">
-              <span className="text-white/60 font-bold">Example:</span> Gibbs (HC 17) vs Ryan (HC 10) in Singles → difference = 7 strokes → Gibbs gets ★ on the 7 hardest holes. On a Rank-3 hole, Gibbs shoots 5 gross → counts as 4 net.
-            </div>
-          </div>
-
-          {/* Skins */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">🏆</span>
-              <span className="font-bebas font-bold text-white text-xl">How Skins Work</span>
-            </div>
-            <p className="text-white/60 text-sm leading-relaxed mb-2">
-              All pairings compete for a skin on every hole. The pairing (or player in Best Ball / Singles) with the <span className="text-white">unique lowest net score</span> wins that hole's skin. If two or more tie for best, no skin is awarded — it does not carry over.
-            </p>
+          {/* ── Match Play Scoring ─────────────────────────────────────────── */}
+          <GlossSection title="Ryder Cup Match Play" accent="rgba(201,162,39,0.35)">
             <p className="text-white/60 text-sm leading-relaxed">
-              Skins handicap strokes compare each pairing to the <span className="text-white">lowest-handicap pairing in the entire field</span>, not just their head-to-head opponent. That's why the skin stroke count shown (🏆 Skin hdcp −N) may differ from the match play stroke (★).
+              Every format uses <span className="text-white font-semibold">hole-by-hole match play</span> — you compete for each hole individually, not cumulative score. Win a hole → your side goes 1 UP. Lose a hole → opponent goes 1 UP. Tie a hole → it's <span className="text-white font-semibold">halved</span> (no change). The match ends when one side leads by more holes than remain, or after all holes are played.
             </p>
-          </div>
-
-          {/* Score colours */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="font-bebas font-bold text-white text-xl mb-3">Score Button Colours</div>
-            <div className="flex flex-wrap gap-x-5 gap-y-2">
-              {([['text-yellow-400','Eagle or better (−2+)'],['text-red-300','Birdie (−1)'],['text-white','Par'],['text-blue-300','Bogey (+1)'],['text-blue-200','Double bogey or worse (+2+)']] as const).map(([c,l])=>(
-                <div key={l} className="flex items-center gap-2">
-                  <span className={`font-bebas font-black text-2xl leading-none ${c}`}>4</span>
-                  <span className="text-white/40 text-xs">{l}</span>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              {([['1 UP','Lead by 1 hole','text-blue-300'],['2 DN','Trail by 2 holes','text-red-300'],['AS','All Square (tied)','text-white/50']] as const).map(([s,d,c])=>(
+                <div key={s} className="rounded-xl p-2.5" style={{background:'rgba(255,255,255,0.06)'}}>
+                  <div className={`font-bebas text-2xl font-bold ${c}`}>{s}</div>
+                  <div className="text-white/35 mt-0.5">{d}</div>
                 </div>
               ))}
             </div>
-          </div>
+            <HcpBox>
+              <FormulaRow label="Win match outright:" val="1 full point"/>
+              <FormulaRow label="All Square after all holes:" val="½ point each"/>
+              <FormulaRow label="Warrior Cup winner:" val="first team to majority of total available points"/>
+            </HcpBox>
+          </GlossSection>
+
+          {/* ── Handicap Strokes (★) ───────────────────────────────────────── */}
+          <GlossSection title="★  Handicap Strokes" accent="rgba(234,179,8,0.35)">
+            <p className="text-white/60 text-sm leading-relaxed">
+              A <span className="text-yellow-400 font-bold">★</span> on a hole means you receive a <span className="text-white font-semibold">handicap stroke</span> — your gross score is reduced by 1 to give your net score. Strokes are allocated starting from the <span className="text-white font-semibold">hardest hole</span> (Rank 1) down to the easiest (Rank 18). Only the higher-handicap side receives strokes; the lower-handicap side plays at scratch relative to their opponent.
+            </p>
+            <HcpBox>
+              <div className="text-white/50 font-semibold mb-1">Course Handicap formula</div>
+              <FormulaRow label="Course HC =" val="round( Handicap Index × Slope ÷ 113 )"/>
+              <FormulaRow label="Strokes on hole =" val="⌊ diff ÷ 18 ⌋ + (1 if hole Rank ≤ diff mod 18)"/>
+              <div className="text-white/30 mt-1 leading-relaxed">Where <em>diff</em> = |HC₁ − HC₂|. A 7-stroke difference means you get 1 stroke on Ranks 1–7, 0 on Ranks 8–18.</div>
+            </HcpBox>
+            <ExRow>Gibbs (HC 17) vs Ryan (HC 10) in Singles → diff = 7. Gibbs gets ★ on Ranks 1–7. On a Rank-3 hole Gibbs shoots 5 gross → 4 net.</ExRow>
+          </GlossSection>
+
+          {/* ── Skins ─────────────────────────────────────────────────────── */}
+          <GlossSection title="🏆  Skins">
+            <p className="text-white/60 text-sm leading-relaxed">
+              All pairings (or players in Best Ball / Singles) compete for a skin on every hole. The side with the <span className="text-white font-semibold">unique lowest net score</span> wins that hole's skin. If two or more sides tie, <span className="text-white font-semibold">no skin is awarded</span> — it does not carry over.
+            </p>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Skins strokes are calculated relative to the <span className="text-white font-semibold">lowest-handicap pairing within the same match</span>. That pairing plays to scratch for skins; all others receive the difference in strokes using the same rank-based allocation as match play.
+            </p>
+            <ExRow>In a match with pairings at HC 4, 8, 12, 15 — the HC-4 pairing is baseline. HC-12 pairing gets strokes on the 8 hardest holes for skins.</ExRow>
+          </GlossSection>
+
+          {/* ── Score Colors ──────────────────────────────────────────────── */}
+          <GlossSection title="Score Display Colours">
+            <div className="flex flex-wrap gap-x-5 gap-y-2.5">
+              {([['text-yellow-400','Eagle or better','−2 or better'],['text-red-300','Birdie','−1'],['text-white','Par','E'],['text-blue-300','Bogey','+1'],['text-blue-200/80','Double+','+2 or worse']] as const).map(([c,l,s])=>(
+                <div key={l} className="flex items-center gap-2">
+                  <span className={`font-bebas font-black text-2xl leading-none ${c}`}>4</span>
+                  <div>
+                    <div className={`text-xs font-semibold ${c}`}>{l}</div>
+                    <div className="text-white/30 text-xs">{s}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </GlossSection>
 
           <div className="text-xs font-bold text-white/25 tracking-widest uppercase px-1 pt-1">The 6 Game Formats</div>
 
-          {/* Modified Scramble */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <span className="font-bebas font-bold text-white text-xl">Modified Scramble</span>
-              <Badge color="gold">0.5 pts/hole</Badge>
+          {/* ── Modified Scramble ──────────────────────────────────────────── */}
+          <GlossSection title="Modified Scramble">
+            <div className="flex items-center gap-2 -mt-1">
+              <Badge color="gold">0.5 pts / hole</Badge>
+              <Badge color="blue">All 4 pairings compete</Badge>
             </div>
-            <p className="text-white/60 text-sm leading-relaxed mb-2">All 4 pairings play a scramble — both partners hit, pick the best ball, repeat. The best net score among all 4 pairings wins the hole for their team. 0.5 pts to the winning team per hole.</p>
-            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: 35% of the lower player's course handicap + 15% of the higher player's, rounded.</div>
-          </div>
+            <p className="text-white/60 text-sm leading-relaxed">
+              All 4 pairings play a scramble simultaneously — both partners hit every shot, the team picks the best ball, and both play from that spot. After all pairings hole out, the <span className="text-white font-semibold">pairing with the lowest net score</span> wins 0.5 pts for their team. This is the only format where all 4 pairings compete against each other on every hole rather than in separate head-to-head matchups.
+            </p>
+            <HcpBox>
+              <div className="text-white/50 font-semibold mb-1">Handicap Calculation</div>
+              <FormulaRow label="Step 1:" val="Convert each player's index to Course HC ( index × slope ÷ 113 )"/>
+              <FormulaRow label="Step 2:" val="Pairing HC = round( lower × 0.35 + higher × 0.15 )"/>
+              <FormulaRow label="Step 3:" val="Lower-HC pairing plays to scratch; others receive the difference in strokes by rank"/>
+            </HcpBox>
+            <ExRow>Player A (index 8) + Player B (index 16) on slope 131: Course HCs ≈ 9 and 19. Pairing HC = round(9×0.35 + 19×0.15) = round(3.15 + 2.85) = 6.</ExRow>
+          </GlossSection>
 
-          {/* Best Ball */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <span className="font-bebas font-bold text-white text-xl">Best Ball</span>
-              <Badge color="gold">2 pts total</Badge>
+          {/* ── Best Ball ─────────────────────────────────────────────────── */}
+          <GlossSection title="Best Ball">
+            <div className="flex items-center gap-2 -mt-1">
+              <Badge color="gold">2 pts · two 1v1 matchups</Badge>
             </div>
-            <p className="text-white/60 text-sm leading-relaxed mb-2">Everyone plays their own ball. Per pairing matchup, the best net score of the two players counts for the team. Two independent head-to-head matchups (Pairing 1 vs Pairing 1, Pairing 2 vs Pairing 2) — each worth 1 pt.</p>
-            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: Each player gets 90% of their course handicap. The lowest-handicap player across both pairings plays to scratch; others get strokes for 90% of the difference. Full handicap used for skins vs the whole field.</div>
-          </div>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Every player competes individually — play your own ball all the way. The <span className="text-white font-semibold">best individual net score</span> of the two players in a pairing counts as that pairing's score for the hole. Two independent head-to-head matchups run simultaneously (Pairing 1 vs Pairing 1, Pairing 2 vs Pairing 2), each worth 1 pt.
+            </p>
+            <HcpBox>
+              <div className="text-white/50 font-semibold mb-1">Handicap Calculation  (USGA Best Ball)</div>
+              <FormulaRow label="Step 1:" val="Each player's Allowance HC = round( Course HC × 0.90 )"/>
+              <FormulaRow label="Step 2:" val="Within each pairing matchup (4 players), find the lowest Allowance HC — that player gets 0 strokes"/>
+              <FormulaRow label="Step 3:" val="All others get strokes based on 90% of the difference in Allowance HCs, by rank"/>
+              <div className="text-white/30 mt-1">Skins use full Course HC (not 90%) against all pairings in the match.</div>
+            </HcpBox>
+            <ExRow>A=HC 6, B=HC 14, C=HC 10, D=HC 18 in one matchup. Allowances: 5, 13, 9, 16. Lowest = 5 (A plays scratch). B gets round((13−5)×0.9)=7 strokes on Ranks 1–7.</ExRow>
+          </GlossSection>
 
-          {/* 2-Man Scramble */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <span className="font-bebas font-bold text-white text-xl">2-Man Scramble</span>
-              <Badge color="gold">2 pts total</Badge>
+          {/* ── 2-Man Scramble ────────────────────────────────────────────── */}
+          <GlossSection title="2-Man Scramble">
+            <div className="flex items-center gap-2 -mt-1">
+              <Badge color="gold">2 pts · two 1v1 matchups</Badge>
             </div>
-            <p className="text-white/60 text-sm leading-relaxed mb-2">Both partners hit every shot, pick the best ball, and both play from there. Two head-to-head pairing matchups, 1 pt each. Net score per pairing wins the hole.</p>
-            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: 35% of lower + 15% of higher course handicap. Lower handicap pairing plays to scratch; other gets the difference in strokes.</div>
-          </div>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Both partners hit every shot and the team picks the best ball — then both play from that spot for the next shot. Unlike Modified Scramble, this runs as <span className="text-white font-semibold">two separate pairing matchups</span> (Pair 1A vs Pair 1B, Pair 2A vs Pair 2B), each earning 1 pt.
+            </p>
+            <HcpBox>
+              <div className="text-white/50 font-semibold mb-1">Handicap Calculation</div>
+              <FormulaRow label="Step 1:" val="Convert each player's index to Course HC"/>
+              <FormulaRow label="Step 2:" val="Pairing HC = round( lower × 0.35 + higher × 0.15 )"/>
+              <FormulaRow label="Step 3:" val="In each matchup, lower-HC pairing plays to scratch; opponent gets the difference in strokes by rank"/>
+            </HcpBox>
+            <ExRow>Pair A/B: Course HCs 9 & 19 → Pairing HC = 6. Pair C/D: Course HCs 5 & 13 → Pairing HC = round(5×0.35+13×0.15) = round(1.75+1.95) = 4. Pair A/B gets 2 strokes on Ranks 1–2.</ExRow>
+          </GlossSection>
 
-          {/* Greensomes */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <span className="font-bebas font-bold text-white text-xl">Greensomes</span>
-              <Badge color="gold">2 pts total</Badge>
+          {/* ── Greensomes ────────────────────────────────────────────────── */}
+          <GlossSection title="Greensomes">
+            <div className="flex items-center gap-2 -mt-1">
+              <Badge color="gold">2 pts · two 1v1 matchups</Badge>
             </div>
-            <p className="text-white/60 text-sm leading-relaxed mb-2">Both partners tee off, then the team picks the best drive. From there they alternate shots for the rest of the hole. Two head-to-head pairing matchups, 1 pt each.</p>
-            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: 60% of the lower handicap + 40% of the higher handicap, rounded.</div>
-          </div>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Both partners tee off on every hole. The team <span className="text-white font-semibold">picks the best drive</span>, then the player whose ball was <em>not</em> chosen plays the second shot, and they alternate from there. A hybrid between scramble and alternate shot — you always get the best start but must commit to alternating afterward.
+            </p>
+            <HcpBox>
+              <div className="text-white/50 font-semibold mb-1">Handicap Calculation  (World Handicap System Greensomes)</div>
+              <FormulaRow label="Step 1:" val="Convert each player's index to Course HC"/>
+              <FormulaRow label="Step 2:" val="Pairing HC = round( lower × 0.60 + higher × 0.40 )"/>
+              <FormulaRow label="Step 3:" val="In each matchup, lower-HC pairing plays to scratch; opponent gets the difference by rank"/>
+            </HcpBox>
+            <ExRow>Player A (Course HC 8) + Player B (Course HC 20): Pairing HC = round(8×0.60 + 20×0.40) = round(4.8 + 8.0) = 13. Opponent Pairing HC 10 → they get 3 strokes on Ranks 1–3.</ExRow>
+          </GlossSection>
 
-          {/* Alternate Shot */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <span className="font-bebas font-bold text-white text-xl">Alternate Shot</span>
-              <Badge color="gold">2 pts total</Badge>
+          {/* ── Alternate Shot ────────────────────────────────────────────── */}
+          <GlossSection title="Alternate Shot">
+            <div className="flex items-center gap-2 -mt-1">
+              <Badge color="gold">2 pts · two 1v1 matchups</Badge>
             </div>
-            <p className="text-white/60 text-sm leading-relaxed mb-2">Partners take turns hitting every shot — one tees off on odd holes, the other on even. The toughest team format. Two head-to-head pairing matchups, 1 pt each.</p>
-            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: 50% of combined course handicaps per pairing, rounded.</div>
-          </div>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Partners take <span className="text-white font-semibold">strictly alternating shots</span> for the entire hole — one player tees off, the other hits the second shot, back and forth until the ball is holed. The assignment is locked per hole: one player tees off on odd holes (#1, 3, 5…), the other on even holes (#2, 4, 6…). The most demanding team format — poor shots cannot be rescued by your partner.
+            </p>
+            <HcpBox>
+              <div className="text-white/50 font-semibold mb-1">Handicap Calculation  (World Handicap System Foursomes)</div>
+              <FormulaRow label="Step 1:" val="Convert each player's index to Course HC"/>
+              <FormulaRow label="Step 2:" val="Pairing HC = round( (HC₁ + HC₂) ÷ 2 )"/>
+              <FormulaRow label="Step 3:" val="In each matchup, lower-HC pairing plays to scratch; opponent gets the difference by rank"/>
+            </HcpBox>
+            <ExRow>Player A (Course HC 6) + Player B (Course HC 14): Pairing HC = round((6+14)÷2) = 10. Vs Pairing HC 7 → difference = 3 strokes on Ranks 1–3.</ExRow>
+          </GlossSection>
 
-          {/* Singles */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <span className="font-bebas font-bold text-white text-xl">Singles</span>
-              <Badge color="gold">4 pts total</Badge>
+          {/* ── Singles ───────────────────────────────────────────────────── */}
+          <GlossSection title="Singles">
+            <div className="flex items-center gap-2 -mt-1">
+              <Badge color="gold">4 pts · four 1v1 matchups</Badge>
             </div>
-            <p className="text-white/60 text-sm leading-relaxed mb-2">4 individual 1v1 matchups — every player on the team competes. Play your own ball; lowest net score wins each hole. Each match is worth 1 pt.</p>
-            <div className="text-xs text-white/35 bg-white/5 rounded-xl p-2.5">Handicap: Full course handicap. Lower-handicap player plays to scratch; opponent receives strokes on the hardest holes equal to the full difference. Full handicap also used for skins vs the whole field.</div>
-          </div>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Every player competes individually in a dedicated 1v1 matchup. Four simultaneous matches (P1 vs P1, P2 vs P2, P3 vs P3, P4 vs P4), each worth 1 pt. Play your own ball; lowest net score wins each hole. The culminating format — everyone has personal skin in the game.
+            </p>
+            <HcpBox>
+              <div className="text-white/50 font-semibold mb-1">Handicap Calculation  (Full Course Handicap)</div>
+              <FormulaRow label="Step 1:" val="Course HC = round( Handicap Index × Slope ÷ 113 )"/>
+              <FormulaRow label="Step 2:" val="Lower-HC player plays to scratch; higher-HC player gets the full difference in strokes by rank"/>
+              <div className="text-white/30 mt-1">Skins also use each player's full Course HC, compared to the lowest HC player in that match.</div>
+            </HcpBox>
+            <ExRow>Player A (index 4.2, slope 131): Course HC = round(4.2 × 131 ÷ 113) = round(4.87) = 5. Player B (index 14.8): Course HC = round(14.8 × 131 ÷ 113) = round(17.1) = 17. B gets 12 strokes on Ranks 1–12.</ExRow>
+          </GlossSection>
 
-          {/* Ryder Cup format */}
-          <div className="rounded-2xl border border-white/10 p-4" style={{background:'rgba(255,255,255,0.04)'}}>
-            <div className="font-bebas font-bold text-white text-xl mb-2">Ryder Cup Match Play</div>
-            <p className="text-white/60 text-sm leading-relaxed">All formats use match play scoring — the team that wins more holes wins the match and earns the points. A tie (All Square after the final hole) splits the points evenly. First team to more than half the total available points wins the Warrior Cup.</p>
-          </div>
+          {/* ── Points Summary ────────────────────────────────────────────── */}
+          <GlossSection title="Points at a Glance" accent="rgba(59,130,246,0.25)">
+            <div className="space-y-2">
+              {[
+                ['Modified Scramble','0.5 pts × holes played','all 4 pairings compete each hole'],
+                ['Best Ball','2 pts (1 per matchup)','2 independent pairings, own ball'],
+                ['2-Man Scramble','2 pts (1 per matchup)','2 pairings, pick-best-shot'],
+                ['Greensomes','2 pts (1 per matchup)','2 pairings, best drive then alternate'],
+                ['Alternate Shot','2 pts (1 per matchup)','2 pairings, strict alternating shots'],
+                ['Singles','4 pts (1 per matchup)','4 individual 1v1 matches'],
+              ].map(([fmt,pts,note])=>(
+                <div key={fmt} className="flex items-start justify-between gap-3 rounded-xl p-2.5" style={{background:'rgba(255,255,255,0.04)'}}>
+                  <div>
+                    <div className="text-white/80 text-xs font-semibold">{fmt}</div>
+                    <div className="text-white/30 text-xs">{note}</div>
+                  </div>
+                  <div className="text-[#C9A227] font-bebas text-base shrink-0">{pts}</div>
+                </div>
+              ))}
+            </div>
+          </GlossSection>
 
         </div>
       </BG>
