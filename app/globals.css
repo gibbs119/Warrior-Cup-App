@@ -12,3 +12,48 @@ body {
   -webkit-overflow-scrolling: touch;
   height: 100%;
 }
+
+/* ── iOS PWA: full-bleed safe-area handling ────────────────────────────────── */
+/* Left/right safe area insets activate in landscape on iPhones with notch/
+   Dynamic Island (iPhone X and later). The .safe-x utility class applies them. */
+.safe-x {
+  padding-left:  env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Bottom safe area helper (used on scroll containers) */
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* ── Landscape-specific tweaks ─────────────────────────────────────────────── */
+@media (orientation: landscape) {
+  /* Shrink the score button height so more content fits vertically */
+  .score-btn {
+    height: 2.25rem; /* 36px instead of 48px */
+  }
+
+  /* Compact hole-navigator chips */
+  .hole-chip {
+    width:  2.25rem;
+    height: 2.25rem;
+  }
+
+  /* Reduce sticky header padding so it consumes less of the short viewport */
+  .scoring-header-pt {
+    padding-top: calc(env(safe-area-inset-top) + 6px);
+  }
+}
+
+@media (orientation: portrait) {
+  .score-btn {
+    height: 3rem; /* 48px — original */
+  }
+  .hole-chip {
+    width:  3rem;
+    height: 3rem;
+  }
+  .scoring-header-pt {
+    padding-top: calc(env(safe-area-inset-top) + 12px);
+  }
+}
