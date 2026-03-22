@@ -1486,28 +1486,32 @@ function GolfScoringApp() {
     }
   };
 
-  const joinTournament = async (asAdmin: boolean) => {
-    setLoginErr(''); 
-    
+  const joinTournament = async (asAdmin: boolean, asViewer = false) => {
+    setLoginErr('');
+
     // Validate tournament ID
     const tournIdValidation = validation.tournamentId(tournId);
     if (!tournIdValidation.valid) {
       setLoginErr(tournIdValidation.error || 'Invalid tournament ID');
       return;
     }
-    
+
     // Validate passcode
     const passcodeValidation = validation.passcode(passcode);
     if (!passcodeValidation.valid) {
       setLoginErr(passcodeValidation.error || 'Invalid passcode');
       return;
     }
-    
+
     setLoading(true);
     const data = await loadTournament(tournId.toUpperCase().trim());
     if (!data) { setLoginErr('Tournament not found.'); setLoading(false); return; }
     if (asAdmin && passcode!==data.adminPasscode) { setLoginErr('Wrong admin passcode.'); setLoading(false); return; }
-    const isViewer = !asAdmin && !!data.viewerPasscode && passcode===(data.viewerPasscode||'view');
+    if (asViewer) {
+      const viewerPc = data.viewerPasscode || 'view';
+      if (passcode !== viewerPc) { setLoginErr('Wrong viewer passcode.'); setLoading(false); return; }
+    }
+    const isViewer = asViewer || (!asAdmin && !!data.viewerPasscode && passcode===(data.viewerPasscode||'view'));
     if (!asAdmin && !isViewer && passcode!==data.passcode) { setLoginErr('Wrong passcode.'); setLoading(false); return; }
     const resolvedRole = asAdmin ? 'admin' : isViewer ? 'viewer' : 'player';
     setTData(data); setRole(resolvedRole);
@@ -2337,7 +2341,7 @@ function GolfScoringApp() {
                 <div>
                   <div className="text-white font-bold text-base leading-tight">{savedSession.tournId}</div>
                   <div className="flex items-center gap-2 mt-1">
-                    <Badge color={savedSession.role==='admin'?'gold':'blue'}>{savedSession.role==='admin'?'Admin':'Player'}</Badge>
+                    <Badge color={savedSession.role==='admin'?'gold':savedSession.role==='viewer'?'green':'blue'}>{savedSession.role==='admin'?'Admin':savedSession.role==='viewer'?'Viewer':'Player'}</Badge>
                   </div>
                 </div>
                 <Btn color="gold" onClick={async()=>{
@@ -2375,13 +2379,16 @@ function GolfScoringApp() {
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
-              <Btn color="blue" onClick={()=>joinTournament(false)} disabled={loading||!tournId||!passcode} loading={loading} className="w-full flex items-center justify-center gap-2">
+              <Btn color="blue" onClick={()=>joinTournament(false,false)} disabled={loading||!tournId||!passcode} loading={loading} className="w-full flex items-center justify-center gap-2">
                 <Users className="w-4 h-4"/><span>Player</span>
               </Btn>
-              <Btn color="ghost" onClick={()=>joinTournament(true)} disabled={loading||!tournId||!passcode} loading={loading} className="w-full flex items-center justify-center gap-2">
-                <Lock className="w-4 h-4"/><span>Admin</span>
+              <Btn color="green" onClick={()=>joinTournament(false,true)} disabled={loading||!tournId||!passcode} loading={loading} className="w-full flex items-center justify-center gap-2">
+                <BookOpen className="w-4 h-4"/><span>View Only</span>
               </Btn>
             </div>
+            <Btn color="ghost" onClick={()=>joinTournament(true,false)} disabled={loading||!tournId||!passcode} loading={loading} className="w-full flex items-center justify-center gap-2">
+              <Lock className="w-4 h-4"/><span>Admin</span>
+            </Btn>
           </div>
 
           {/* Divider */}
