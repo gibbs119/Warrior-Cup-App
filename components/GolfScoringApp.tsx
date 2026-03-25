@@ -138,6 +138,35 @@ const PRESET_COURSES: Course[] = [
     ]
   },
   {
+    id:'kissimmee_bay', name:'Kissimmee Bay Country Club', location:'Kissimmee, FL',
+    tees:[
+      { name:'Gold', slope:132, rating:72.4, par:71, holes:[
+        {h:1,par:5,yards:562,rank:3},{h:2,par:4,yards:372,rank:12},{h:3,par:4,yards:443,rank:1},
+        {h:4,par:4,yards:364,rank:14},{h:5,par:4,yards:398,rank:13},{h:6,par:3,yards:221,rank:9},
+        {h:7,par:4,yards:462,rank:7},{h:8,par:3,yards:144,rank:16},{h:9,par:5,yards:585,rank:5},
+        {h:10,par:4,yards:357,rank:18},{h:11,par:5,yards:567,rank:4},{h:12,par:4,yards:381,rank:11},
+        {h:13,par:3,yards:185,rank:17},{h:14,par:4,yards:415,rank:6},{h:15,par:4,yards:386,rank:2},
+        {h:16,par:3,yards:166,rank:15},{h:17,par:4,yards:416,rank:10},{h:18,par:4,yards:422,rank:8},
+      ]},
+      { name:'Blue', slope:123, rating:69.9, par:71, holes:[
+        {h:1,par:5,yards:524,rank:3},{h:2,par:4,yards:347,rank:12},{h:3,par:4,yards:413,rank:1},
+        {h:4,par:4,yards:339,rank:14},{h:5,par:4,yards:371,rank:13},{h:6,par:3,yards:206,rank:9},
+        {h:7,par:4,yards:431,rank:7},{h:8,par:3,yards:134,rank:16},{h:9,par:5,yards:545,rank:5},
+        {h:10,par:4,yards:333,rank:18},{h:11,par:5,yards:529,rank:4},{h:12,par:4,yards:355,rank:11},
+        {h:13,par:3,yards:173,rank:17},{h:14,par:4,yards:387,rank:6},{h:15,par:4,yards:360,rank:2},
+        {h:16,par:3,yards:155,rank:15},{h:17,par:4,yards:388,rank:10},{h:18,par:4,yards:393,rank:8},
+      ]},
+      { name:'White', slope:113, rating:67.9, par:71, holes:[
+        {h:1,par:5,yards:488,rank:3},{h:2,par:4,yards:323,rank:12},{h:3,par:4,yards:385,rank:1},
+        {h:4,par:4,yards:316,rank:14},{h:5,par:4,yards:346,rank:13},{h:6,par:3,yards:192,rank:9},
+        {h:7,par:4,yards:401,rank:7},{h:8,par:3,yards:125,rank:16},{h:9,par:5,yards:508,rank:5},
+        {h:10,par:4,yards:310,rank:18},{h:11,par:5,yards:492,rank:4},{h:12,par:4,yards:331,rank:11},
+        {h:13,par:3,yards:161,rank:17},{h:14,par:4,yards:360,rank:6},{h:15,par:4,yards:335,rank:2},
+        {h:16,par:3,yards:144,rank:15},{h:17,par:4,yards:361,rank:10},{h:18,par:4,yards:367,rank:8},
+      ]},
+    ]
+  },
+  {
     id:'disney_lbv', name:"Disney's Lake Buena Vista Golf Course", location:'Lake Buena Vista, FL',
     tees:[
       { name:'Blue', slope:133, rating:72.3, par:72, holes:[
