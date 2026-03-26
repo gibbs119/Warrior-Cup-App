@@ -203,6 +203,43 @@ const PRESET_COURSES: Course[] = [
       ]},
     ]
   },
+  {
+    id:'tpc_sawgrass', name:'TPC Sawgrass (Stadium)', location:'Ponte Vedra Beach, FL',
+    tees:[
+      { name:'TPC', slope:144, rating:75.4, par:72, holes:[
+        {h:1,par:4,yards:423,rank:11},{h:2,par:5,yards:532,rank:9},{h:3,par:3,yards:177,rank:17},
+        {h:4,par:4,yards:384,rank:13},{h:5,par:4,yards:471,rank:3},{h:6,par:4,yards:393,rank:15},
+        {h:7,par:4,yards:451,rank:7},{h:8,par:3,yards:237,rank:5},{h:9,par:5,yards:602,rank:1},
+        {h:10,par:4,yards:424,rank:10},{h:11,par:5,yards:558,rank:8},{h:12,par:4,yards:369,rank:16},
+        {h:13,par:3,yards:181,rank:18},{h:14,par:4,yards:481,rank:2},{h:15,par:4,yards:470,rank:4},
+        {h:16,par:5,yards:523,rank:12},{h:17,par:3,yards:137,rank:14},{h:18,par:4,yards:462,rank:6},
+      ]},
+      { name:'Blue', slope:130, rating:72.6, par:72, holes:[
+        {h:1,par:4,yards:388,rank:11},{h:2,par:5,yards:488,rank:9},{h:3,par:3,yards:162,rank:17},
+        {h:4,par:4,yards:352,rank:13},{h:5,par:4,yards:432,rank:3},{h:6,par:4,yards:360,rank:15},
+        {h:7,par:4,yards:414,rank:7},{h:8,par:3,yards:217,rank:5},{h:9,par:5,yards:552,rank:1},
+        {h:10,par:4,yards:389,rank:10},{h:11,par:5,yards:512,rank:8},{h:12,par:4,yards:338,rank:16},
+        {h:13,par:3,yards:166,rank:18},{h:14,par:4,yards:441,rank:2},{h:15,par:4,yards:431,rank:4},
+        {h:16,par:5,yards:480,rank:12},{h:17,par:3,yards:126,rank:14},{h:18,par:4,yards:424,rank:6},
+      ]},
+      { name:'White', slope:122, rating:70.1, par:72, holes:[
+        {h:1,par:4,yards:354,rank:11},{h:2,par:5,yards:445,rank:9},{h:3,par:3,yards:148,rank:17},
+        {h:4,par:4,yards:321,rank:13},{h:5,par:4,yards:394,rank:3},{h:6,par:4,yards:329,rank:15},
+        {h:7,par:4,yards:378,rank:7},{h:8,par:3,yards:198,rank:5},{h:9,par:5,yards:504,rank:1},
+        {h:10,par:4,yards:355,rank:10},{h:11,par:5,yards:467,rank:8},{h:12,par:4,yards:309,rank:16},
+        {h:13,par:3,yards:152,rank:18},{h:14,par:4,yards:403,rank:2},{h:15,par:4,yards:393,rank:4},
+        {h:16,par:5,yards:438,rank:12},{h:17,par:3,yards:115,rank:14},{h:18,par:4,yards:387,rank:6},
+      ]},
+      { name:'Green', slope:117, rating:68.5, par:72, slopeW:121, ratingW:70.1, holes:[
+        {h:1,par:4,yards:292,rank:11,rankW:12},{h:2,par:5,yards:367,rank:9,rankW:8},{h:3,par:3,yards:122,rank:17,rankW:16},
+        {h:4,par:4,yards:265,rank:13,rankW:14},{h:5,par:4,yards:325,rank:3,rankW:4},{h:6,par:4,yards:271,rank:15,rankW:18},
+        {h:7,par:4,yards:311,rank:7,rankW:6},{h:8,par:3,yards:164,rank:5,rankW:2},{h:9,par:5,yards:415,rank:1,rankW:10},
+        {h:10,par:4,yards:292,rank:10,rankW:7},{h:11,par:5,yards:385,rank:8,rankW:1},{h:12,par:4,yards:255,rank:16,rankW:17},
+        {h:13,par:3,yards:125,rank:18,rankW:15},{h:14,par:4,yards:332,rank:2,rankW:3},{h:15,par:4,yards:324,rank:4,rankW:5},
+        {h:16,par:5,yards:361,rank:12,rankW:13},{h:17,par:3,yards:95,rank:14,rankW:9},{h:18,par:4,yards:319,rank:6,rankW:11},
+      ]},
+    ],
+  },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1521,6 +1558,9 @@ function GolfScoringApp() {
   const [scanStatus, setScanStatus]   = useState<'idle'|'scanning'|'done'|'error'>('idle');
   const [scanPct, setScanPct]         = useState(0);
   const scanInputRef = useRef<HTMLInputElement|null>(null);
+  const [wikiQuery, setWikiQuery]     = useState('');
+  const [wikiResults, setWikiResults] = useState<{title:string;snippet:string}[]>([]);
+  const [wikiStatus, setWikiStatus]   = useState<'idle'|'searching'|'loading'|'done'|'error'>('idle');
   const unsubRef = useRef<(()=>void)|null>(null);
   const activeMatchIdRef = useRef<string|null>(null);
   useEffect(() => { activeMatchIdRef.current = activeMatchId; }, [activeMatchId]);
@@ -2411,6 +2451,102 @@ function GolfScoringApp() {
     }
   };
 
+  // ── Wikipedia course search ─────────────────────────────────────────────
+  const searchWiki = async () => {
+    if (!wikiQuery.trim()) return;
+    setWikiStatus('searching'); setWikiResults([]);
+    try {
+      const q = encodeURIComponent(wikiQuery.trim() + ' golf course');
+      const res = await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${q}&limit=6&namespace=0&format=json&origin=*`);
+      const [, titles, , urls] = await res.json() as [string, string[], string[], string[]];
+      const results = titles.map((title, i) => ({ title, snippet: urls[i] }));
+      setWikiResults(results);
+      setWikiStatus(results.length ? 'idle' : 'error');
+    } catch { setWikiStatus('error'); }
+  };
+
+  const loadWikiCourse = async (title: string) => {
+    setWikiStatus('loading');
+    try {
+      const res = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&prop=text&format=json&origin=*`);
+      const data = await res.json();
+      const html: string = data?.parse?.text?.['*'] ?? '';
+      if (!html) throw new Error('no content');
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const tables = Array.from(doc.querySelectorAll('table'));
+
+      // Find the scorecard table: has a "Hole" or "#" header row with 9+ number columns
+      let scorecardTable: Element | null = null;
+      for (const tbl of tables) {
+        const rows = Array.from(tbl.querySelectorAll('tr'));
+        const headers = rows[0] ? Array.from(rows[0].querySelectorAll('th,td')).map(c => c.textContent?.trim() ?? '') : [];
+        const hasHole = headers.some(h => /^(hole|#|no\.?)$/i.test(h));
+        const hasNums = headers.filter(h => /^\d+$/.test(h)).length >= 9;
+        if (hasHole || hasNums) { scorecardTable = tbl; break; }
+      }
+      if (!scorecardTable) throw new Error('no scorecard table found');
+
+      const rows = Array.from(scorecardTable.querySelectorAll('tr'));
+      // Get column headers (hole numbers)
+      const headerCells = Array.from(rows[0].querySelectorAll('th,td')).map(c => c.textContent?.trim() ?? '');
+      const holeIndices: {col: number; h: number}[] = [];
+      headerCells.forEach((c, i) => { const n = parseInt(c); if (n >= 1 && n <= 18) holeIndices.push({col: i, h: n}); });
+
+      // Extract row data by label
+      const rowData: Record<string, number[]> = {};
+      for (let ri = 1; ri < rows.length; ri++) {
+        const cells = Array.from(rows[ri].querySelectorAll('th,td')).map(c => c.textContent?.trim() ?? '');
+        const label = cells[0] ?? '';
+        const vals = holeIndices.map(({col}) => parseInt(cells[col] ?? '') || 0);
+        if (vals.some(v => v > 0)) rowData[label] = vals;
+      }
+
+      // Identify rows by type
+      const teeParsed: Tee[] = [];
+      const parKey = Object.keys(rowData).find(k => /^par$/i.test(k));
+      const hcpKey = Object.keys(rowData).find(k => /^(h\.?c\.?p\.?|hdcp|handicap|stroke)/i.test(k));
+      const hcpWKey = Object.keys(rowData).find(k => /^(w\.?h\.?c\.?p\.?|women|ladies)/i.test(k));
+      const parVals = parKey ? rowData[parKey] : [];
+      const hcpVals = hcpKey ? rowData[hcpKey] : [];
+      const hcpWVals = hcpWKey ? rowData[hcpWKey] : hcpVals;
+
+      // Build a Tee for each non-par, non-hcp row
+      const skipKeys = new Set([parKey, hcpKey, hcpWKey, 'Total', 'Out', 'In', 'Totals', 'Yardage'].map(k => k?.toLowerCase()));
+      for (const [label, vals] of Object.entries(rowData)) {
+        if (skipKeys.has(label.toLowerCase())) continue;
+        if (!vals.every(v => v >= 60 && v <= 1000)) continue; // must look like yardages
+        // Extract slope/rating from label if present (e.g. "Blue (74.2/137)")
+        const ratingM = parseFloat(label.match(/(7[0-9]|6[5-9])\.(\d)/)?.[0] ?? '72.0');
+        const slopeM  = parseInt(label.match(/\b(\d{2,3})\b/)?.pop() ?? '113');
+        const teeName = label.replace(/[\(\)\d\.\/ ]+$/, '').trim() || label;
+        const holes: Hole[] = holeIndices.map(({h}, i) => ({
+          h, par: parVals[i] ?? 4, yards: vals[i] ?? 0,
+          rank: hcpVals[i] ?? (i + 1), rankW: hcpWVals[i] ?? hcpVals[i] ?? (i + 1),
+        }));
+        const totalPar = parVals.length ? parVals.reduce((a,b)=>a+b,0) : 72;
+        teeParsed.push({ name: teeName, slope: slopeM, rating: ratingM, par: totalPar, holes });
+      }
+
+      if (!teeParsed.length) throw new Error('no tee rows found');
+
+      // Use the Wikipedia article title as course name
+      const courseName = data?.parse?.title ?? title;
+      setManualCourse(c => ({
+        ...c,
+        name: c.name || courseName,
+        tees: teeParsed,
+      }));
+      setWikiStatus('done');
+      setWikiResults([]);
+      showToast(`Loaded ${teeParsed.length} tee${teeParsed.length!==1?'s':''} from Wikipedia`, 'success');
+    } catch (e) {
+      console.error('Wiki load error:', e);
+      setWikiStatus('error');
+    }
+  };
+
   const runScan = async () => {
     if (!scanImg) return;
     setScanStatus('scanning'); setScanPct(0);
@@ -3269,6 +3405,46 @@ function GolfScoringApp() {
       <BG>
       <TopBar title={editingCourseId ? 'Edit Course' : 'Add a Course'} back={()=>{ setEditingCourseId(null); setScreen('admin'); }}/>
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
+        {/* ── Wikipedia Course Search ─────────────────────────────────── */}
+        <div className="rounded-2xl p-4 border border-blue-500/30" style={{background:'rgba(30,64,175,0.07)'}}>
+          <div className="text-xs font-bold text-blue-300 tracking-widest uppercase mb-3 flex items-center gap-2">
+            🔍 Search Course Data
+            <span className="text-blue-300/50 font-normal normal-case tracking-normal">— pulls from Wikipedia, free</span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={wikiQuery} onChange={e=>setWikiQuery(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&searchWiki()}
+              placeholder="e.g. TPC Sawgrass, Pebble Beach..."
+              className="flex-1 px-3 py-2 rounded-xl text-white text-sm border border-white/10 outline-none"
+              style={{background:'rgba(255,255,255,0.07)'}}/>
+            <Btn color="blue" sm onClick={searchWiki} disabled={wikiStatus==='searching'||wikiStatus==='loading'}>
+              {wikiStatus==='searching'||wikiStatus==='loading' ? '...' : 'Search'}
+            </Btn>
+          </div>
+          {wikiResults.length>0&&(
+            <div className="mt-2 space-y-1">
+              {wikiResults.map(r=>(
+                <button key={r.title} onClick={()=>loadWikiCourse(r.title)}
+                  className="w-full text-left px-3 py-2 rounded-xl text-sm text-white hover:bg-white/10 border border-white/5 transition-all"
+                  style={{background:'rgba(255,255,255,0.04)'}}>
+                  <span className="font-semibold text-blue-200">{r.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {wikiStatus==='done'&&(
+            <div className="mt-2 rounded-xl p-2 text-xs font-bold text-emerald-300 text-center" style={{background:'rgba(16,185,129,0.1)'}}>
+              ✓ Scorecard loaded — review and adjust below before saving
+            </div>
+          )}
+          {wikiStatus==='error'&&wikiResults.length===0&&(
+            <div className="mt-2 rounded-xl p-2 text-xs font-bold text-orange-300 text-center" style={{background:'rgba(249,115,22,0.1)'}}>
+              No scorecard found on Wikipedia — try the photo scan or enter manually below
+            </div>
+          )}
+        </div>
+
         {/* ── Scan from Photo ───────────────────────────────────────────── */}
         <div className="rounded-2xl p-4 border-2 border-dashed border-teal-500/40" style={{background:'rgba(20,184,166,0.05)'}}>
           <div className="text-xs font-bold text-teal-400 tracking-widest uppercase mb-3 flex items-center gap-2">
