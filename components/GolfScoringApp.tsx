@@ -156,14 +156,7 @@ const PRESET_COURSES: Course[] = [
         {h:13,par:3,yards:139,rank:17},{h:14,par:4,yards:373,rank:6},{h:15,par:4,yards:328,rank:2},
         {h:16,par:3,yards:141,rank:15},{h:17,par:4,yards:333,rank:10},{h:18,par:4,yards:373,rank:8},
       ]},
-      { name:'White', slope:113, rating:67.9, par:71, holes:[
-        {h:1,par:5,yards:488,rank:3},{h:2,par:4,yards:323,rank:12},{h:3,par:4,yards:385,rank:1},
-        {h:4,par:4,yards:316,rank:14},{h:5,par:4,yards:346,rank:13},{h:6,par:3,yards:192,rank:9},
-        {h:7,par:4,yards:401,rank:7},{h:8,par:3,yards:125,rank:16},{h:9,par:5,yards:508,rank:5},
-        {h:10,par:4,yards:310,rank:18},{h:11,par:5,yards:492,rank:4},{h:12,par:4,yards:331,rank:11},
-        {h:13,par:3,yards:161,rank:17},{h:14,par:4,yards:360,rank:6},{h:15,par:4,yards:335,rank:2},
-        {h:16,par:3,yards:144,rank:15},{h:17,par:4,yards:361,rank:10},{h:18,par:4,yards:367,rank:8},
-      ]},
+      // White tee: scan the physical scorecard at the course to add exact yardages
     ]
   },
   {
@@ -214,30 +207,7 @@ const PRESET_COURSES: Course[] = [
         {h:13,par:3,yards:181,rank:18,rankW:18},{h:14,par:4,yards:481,rank:4,rankW:12},{h:15,par:4,yards:470,rank:6,rankW:8},
         {h:16,par:5,yards:523,rank:10,rankW:4},{h:17,par:3,yards:137,rank:14,rankW:16},{h:18,par:4,yards:462,rank:2,rankW:6},
       ]},
-      { name:'Blue', slope:149, rating:73.3, par:72, holes:[
-        {h:1,par:4,yards:390,rank:11,rankW:11},{h:2,par:5,yards:505,rank:15,rankW:1},{h:3,par:3,yards:165,rank:17,rankW:17},
-        {h:4,par:4,yards:360,rank:9,rankW:5},{h:5,par:4,yards:445,rank:3,rankW:7},{h:6,par:4,yards:370,rank:13,rankW:13},
-        {h:7,par:4,yards:425,rank:1,rankW:9},{h:8,par:3,yards:220,rank:7,rankW:15},{h:9,par:5,yards:570,rank:5,rankW:3},
-        {h:10,par:4,yards:400,rank:12,rankW:10},{h:11,par:5,yards:530,rank:8,rankW:2},{h:12,par:4,yards:350,rank:16,rankW:14},
-        {h:13,par:3,yards:170,rank:18,rankW:18},{h:14,par:4,yards:455,rank:4,rankW:12},{h:15,par:4,yards:445,rank:6,rankW:8},
-        {h:16,par:5,yards:495,rank:10,rankW:4},{h:17,par:3,yards:130,rank:14,rankW:16},{h:18,par:4,yards:435,rank:2,rankW:6},
-      ]},
-      { name:'Blended', slope:147, rating:72.0, par:72, holes:[
-        {h:1,par:4,yards:370,rank:11,rankW:11},{h:2,par:5,yards:485,rank:15,rankW:1},{h:3,par:3,yards:155,rank:17,rankW:17},
-        {h:4,par:4,yards:345,rank:9,rankW:5},{h:5,par:4,yards:425,rank:3,rankW:7},{h:6,par:4,yards:355,rank:13,rankW:13},
-        {h:7,par:4,yards:405,rank:1,rankW:9},{h:8,par:3,yards:205,rank:7,rankW:15},{h:9,par:5,yards:545,rank:5,rankW:3},
-        {h:10,par:4,yards:380,rank:12,rankW:10},{h:11,par:5,yards:505,rank:8,rankW:2},{h:12,par:4,yards:335,rank:16,rankW:14},
-        {h:13,par:3,yards:160,rank:18,rankW:18},{h:14,par:4,yards:435,rank:4,rankW:12},{h:15,par:4,yards:425,rank:6,rankW:8},
-        {h:16,par:5,yards:475,rank:10,rankW:4},{h:17,par:3,yards:125,rank:14,rankW:16},{h:18,par:4,yards:415,rank:2,rankW:6},
-      ]},
-      { name:'Green', slope:120, rating:68.0, par:72, slopeW:128, ratingW:72.5, holes:[
-        {h:1,par:4,yards:300,rank:11,rankW:11},{h:2,par:5,yards:415,rank:15,rankW:1},{h:3,par:3,yards:125,rank:17,rankW:17},
-        {h:4,par:4,yards:275,rank:9,rankW:5},{h:5,par:4,yards:345,rank:3,rankW:7},{h:6,par:4,yards:285,rank:13,rankW:13},
-        {h:7,par:4,yards:330,rank:1,rankW:9},{h:8,par:3,yards:165,rank:7,rankW:15},{h:9,par:5,yards:445,rank:5,rankW:3},
-        {h:10,par:4,yards:310,rank:12,rankW:10},{h:11,par:5,yards:415,rank:8,rankW:2},{h:12,par:4,yards:255,rank:16,rankW:14},
-        {h:13,par:3,yards:130,rank:18,rankW:18},{h:14,par:4,yards:355,rank:4,rankW:12},{h:15,par:4,yards:345,rank:6,rankW:8},
-        {h:16,par:5,yards:390,rank:10,rankW:4},{h:17,par:3,yards:100,rank:14,rankW:16},{h:18,par:4,yards:320,rank:2,rankW:6},
-      ]},
+      // Blue / Blended / Green tees: scan the physical scorecard at the course to add exact yardages
     ],
   },
 ];
@@ -1557,10 +1527,13 @@ function GolfScoringApp() {
   const [scanImg, setScanImg]         = useState<string|null>(null);
   const [scanStatus, setScanStatus]   = useState<'idle'|'scanning'|'done'|'error'>('idle');
   const [scanPct, setScanPct]         = useState(0);
+  const [rawOcrText, setRawOcrText]   = useState('');
+  const [ocrWarning, setOcrWarning]   = useState('');
+  const [showRawOcr, setShowRawOcr]   = useState(false);
   const scanInputRef = useRef<HTMLInputElement|null>(null);
-  const [wikiQuery, setWikiQuery]     = useState('');
-  const [wikiResults, setWikiResults] = useState<{title:string;snippet:string}[]>([]);
-  const [wikiStatus, setWikiStatus]   = useState<'idle'|'searching'|'loading'|'done'|'error'>('idle');
+  const [urlInput, setUrlInput]       = useState('');
+  const [urlResults, setUrlResults]   = useState<{title:string;snippet:string}[]>([]);
+  const [urlStatus, setUrlStatus]     = useState<'idle'|'searching'|'loading'|'done'|'error'>('idle');
   const unsubRef = useRef<(()=>void)|null>(null);
   const activeMatchIdRef = useRef<string|null>(null);
   useEffect(() => { activeMatchIdRef.current = activeMatchId; }, [activeMatchId]);
@@ -2451,100 +2424,152 @@ function GolfScoringApp() {
     }
   };
 
-  // ── Wikipedia course search ─────────────────────────────────────────────
-  const searchWiki = async () => {
-    if (!wikiQuery.trim()) return;
-    setWikiStatus('searching'); setWikiResults([]);
-    try {
-      const q = encodeURIComponent(wikiQuery.trim() + ' golf course');
-      const res = await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${q}&limit=6&namespace=0&format=json&origin=*`);
-      const [, titles, , urls] = await res.json() as [string, string[], string[], string[]];
-      const results = titles.map((title, i) => ({ title, snippet: urls[i] }));
-      setWikiResults(results);
-      setWikiStatus(results.length ? 'idle' : 'error');
-    } catch { setWikiStatus('error'); }
+  // ── Course data import (URL or name search) ────────────────────────────
+
+  /** Extract Tee[] from any HTML string containing a golf scorecard table */
+  const parseHTMLScorecard = (html: string): Tee[] => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const tables = Array.from(doc.querySelectorAll('table'));
+
+    const scorecardTables: Element[] = [];
+    for (const tbl of tables) {
+      const rows = Array.from(tbl.querySelectorAll('tr'));
+      if (!rows.length) continue;
+      const headers = Array.from(rows[0].querySelectorAll('th,td')).map(c => c.textContent?.trim() ?? '');
+      const holeCount = headers.filter(h => /^\d+$/.test(h) && +h >= 1 && +h <= 18).length;
+      const hasHoleLabel = headers.some(h => /^(hole|#|no\.?)$/i.test(h));
+      if (holeCount >= 9 || hasHoleLabel) scorecardTables.push(tbl);
+    }
+    if (!scorecardTables.length) return [];
+
+    const results: Tee[] = [];
+
+    for (const tbl of scorecardTables) {
+      const rows = Array.from(tbl.querySelectorAll('tr'));
+      const headerCells = Array.from(rows[0].querySelectorAll('th,td')).map(c => c.textContent?.trim() ?? '');
+      const holeIndices: {col:number; h:number}[] = [];
+      headerCells.forEach((c, i) => {
+        const n = parseInt(c);
+        if (n >= 1 && n <= 18) holeIndices.push({col: i, h: n});
+      });
+      if (holeIndices.length < 9) continue;
+
+      // Collect row label → per-hole values
+      const rowData: Record<string, {vals: number[]; rawLabel: string}> = {};
+      for (let ri = 1; ri < rows.length; ri++) {
+        const cells = Array.from(rows[ri].querySelectorAll('th,td'))
+          .map(c => c.textContent?.replace(/\u00a0/g, ' ').trim() ?? '');
+        const rawLabel = cells[0] ?? '';
+        if (!rawLabel) continue;
+        const key = rawLabel.toLowerCase();
+        const vals = holeIndices.map(({col}) => parseInt((cells[col] ?? '').replace(/[^\d]/g, '')) || 0);
+        if (vals.some(v => v > 0) && !rowData[key]) rowData[key] = {vals, rawLabel};
+      }
+
+      const parKey  = Object.keys(rowData).find(k => /^par$/.test(k));
+      const hcpKey  = Object.keys(rowData).find(k => /^(h\.?c\.?p\.?|hdcp|handicap|stroke index|si)$/i.test(k));
+      const hcpWKey = Object.keys(rowData).find(k => /^(w\.?h\.?c\.?p\.?|women|ladies).*$/.test(k));
+      const parVals  = parKey  ? rowData[parKey].vals  : [];
+      const hcpVals  = hcpKey  ? rowData[hcpKey].vals  : [];
+      const hcpWVals = hcpWKey ? rowData[hcpWKey].vals : hcpVals;
+
+      const skipSet = new Set([parKey, hcpKey, hcpWKey,
+        'total','out','in','totals','yardage','yards','distance','rating','slope',
+      ].map(k => k?.toLowerCase()).filter(Boolean));
+
+      for (const [key, {vals, rawLabel}] of Object.entries(rowData)) {
+        if (skipSet.has(key)) continue;
+        if (!vals.every(v => v === 0 || (v >= 60 && v <= 999))) continue;
+        if (!vals.some(v => v >= 80)) continue;
+
+        const ratingMatch = rawLabel.match(/\b(6[5-9]|7[0-9])\.(\d)\b/);
+        const slopeMatch  = rawLabel.match(/\/(1[0-5][0-9]|[5-9]\d)\b/);
+        const ratingM = ratingMatch ? parseFloat(ratingMatch[0]) : 72.0;
+        const slopeM  = slopeMatch  ? parseInt(slopeMatch[1])    : 113;
+        const teeName = rawLabel.replace(/\s*[\(\[].*$/, '').replace(/[\(\)\[\]\d\.\/\s]+$/, '').trim() || rawLabel;
+
+        const holes: Hole[] = holeIndices.map(({h}, i) => ({
+          h,
+          par:   parVals[i]  ?? 4,
+          yards: vals[i]     ?? 0,
+          rank:  hcpVals[i]  ?? (i + 1),
+          rankW: hcpWVals[i] ?? hcpVals[i] ?? (i + 1),
+        }));
+        const totalPar = parVals.length ? parVals.reduce((a,b)=>a+b,0) : holes.reduce((s,h)=>s+h.par,0);
+        if (!results.find(t => t.name.toLowerCase() === teeName.toLowerCase())) {
+          results.push({name: teeName, slope: slopeM, rating: ratingM, par: totalPar, holes});
+        }
+      }
+    }
+    return results;
   };
 
-  const loadWikiCourse = async (title: string) => {
-    setWikiStatus('loading');
+  /** Fetch HTML — direct first, CORS proxy fallback (allorigins.win, free) */
+  const fetchHTML = async (url: string): Promise<string> => {
     try {
-      const res = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&prop=text&format=json&origin=*`);
-      const data = await res.json();
+      const r = await fetch(url, {signal: AbortSignal.timeout(8000)});
+      if (r.ok) {
+        const ct = r.headers.get('content-type') ?? '';
+        if (ct.includes('html') || ct.includes('text')) return await r.text();
+      }
+    } catch {}
+    const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const r2 = await fetch(proxy, {signal: AbortSignal.timeout(15000)});
+    if (!r2.ok) throw new Error('proxy failed');
+    const data = await r2.json();
+    return data.contents ?? '';
+  };
+
+  /** Import scorecard from any URL the user pastes */
+  const loadFromUrl = async (rawUrl: string) => {
+    setUrlStatus('loading');
+    try {
+      const url = rawUrl.startsWith('http') ? rawUrl : 'https://' + rawUrl;
+      const html = await fetchHTML(url);
+      if (!html) throw new Error('empty');
+      const tees = parseHTMLScorecard(html);
+      if (!tees.length) throw new Error('no table');
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const pageName = titleMatch?.[1]?.replace(/\s*[-|].*$/, '').trim() ?? '';
+      setManualCourse(c => ({...c, name: c.name || pageName, tees}));
+      setUrlStatus('done'); setUrlResults([]);
+      showToast(`Loaded ${tees.length} tee${tees.length!==1?'s':''} from page`, 'success');
+    } catch(e) { console.error('URL load:', e); setUrlStatus('error'); }
+  };
+
+  /** Wikipedia name search — shows article list; picks one to parse */
+  const searchByName = async () => {
+    if (!urlInput.trim()) return;
+    const val = urlInput.trim();
+    if (val.startsWith('http') || (val.includes('.') && !val.includes(' '))) {
+      await loadFromUrl(val); return;
+    }
+    setUrlStatus('searching'); setUrlResults([]);
+    try {
+      const q = encodeURIComponent(val + ' golf course scorecard');
+      const r = await fetch(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${q}&limit=6&namespace=0&format=json&origin=*`);
+      const [,titles,,urls] = await r.json() as [string,string[],string[],string[]];
+      const res = titles.map((title,i) => ({title, snippet: urls[i]}));
+      setUrlResults(res);
+      setUrlStatus(res.length ? 'idle' : 'error');
+    } catch { setUrlStatus('error'); }
+  };
+
+  const loadWikiArticle = async (title: string) => {
+    setUrlStatus('loading');
+    try {
+      const r = await fetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&prop=text&format=json&origin=*`);
+      const data = await r.json();
       const html: string = data?.parse?.text?.['*'] ?? '';
       if (!html) throw new Error('no content');
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const tables = Array.from(doc.querySelectorAll('table'));
-
-      // Find the scorecard table: has a "Hole" or "#" header row with 9+ number columns
-      let scorecardTable: Element | null = null;
-      for (const tbl of tables) {
-        const rows = Array.from(tbl.querySelectorAll('tr'));
-        const headers = rows[0] ? Array.from(rows[0].querySelectorAll('th,td')).map(c => c.textContent?.trim() ?? '') : [];
-        const hasHole = headers.some(h => /^(hole|#|no\.?)$/i.test(h));
-        const hasNums = headers.filter(h => /^\d+$/.test(h)).length >= 9;
-        if (hasHole || hasNums) { scorecardTable = tbl; break; }
-      }
-      if (!scorecardTable) throw new Error('no scorecard table found');
-
-      const rows = Array.from(scorecardTable.querySelectorAll('tr'));
-      // Get column headers (hole numbers)
-      const headerCells = Array.from(rows[0].querySelectorAll('th,td')).map(c => c.textContent?.trim() ?? '');
-      const holeIndices: {col: number; h: number}[] = [];
-      headerCells.forEach((c, i) => { const n = parseInt(c); if (n >= 1 && n <= 18) holeIndices.push({col: i, h: n}); });
-
-      // Extract row data by label
-      const rowData: Record<string, number[]> = {};
-      for (let ri = 1; ri < rows.length; ri++) {
-        const cells = Array.from(rows[ri].querySelectorAll('th,td')).map(c => c.textContent?.trim() ?? '');
-        const label = cells[0] ?? '';
-        const vals = holeIndices.map(({col}) => parseInt(cells[col] ?? '') || 0);
-        if (vals.some(v => v > 0)) rowData[label] = vals;
-      }
-
-      // Identify rows by type
-      const teeParsed: Tee[] = [];
-      const parKey = Object.keys(rowData).find(k => /^par$/i.test(k));
-      const hcpKey = Object.keys(rowData).find(k => /^(h\.?c\.?p\.?|hdcp|handicap|stroke)/i.test(k));
-      const hcpWKey = Object.keys(rowData).find(k => /^(w\.?h\.?c\.?p\.?|women|ladies)/i.test(k));
-      const parVals = parKey ? rowData[parKey] : [];
-      const hcpVals = hcpKey ? rowData[hcpKey] : [];
-      const hcpWVals = hcpWKey ? rowData[hcpWKey] : hcpVals;
-
-      // Build a Tee for each non-par, non-hcp row
-      const skipKeys = new Set([parKey, hcpKey, hcpWKey, 'Total', 'Out', 'In', 'Totals', 'Yardage'].map(k => k?.toLowerCase()));
-      for (const [label, vals] of Object.entries(rowData)) {
-        if (skipKeys.has(label.toLowerCase())) continue;
-        if (!vals.every(v => v >= 60 && v <= 1000)) continue; // must look like yardages
-        // Extract slope/rating from label if present (e.g. "Blue (74.2/137)")
-        const ratingM = parseFloat(label.match(/(7[0-9]|6[5-9])\.(\d)/)?.[0] ?? '72.0');
-        const slopeM  = parseInt(label.match(/\b(\d{2,3})\b/)?.pop() ?? '113');
-        const teeName = label.replace(/[\(\)\d\.\/ ]+$/, '').trim() || label;
-        const holes: Hole[] = holeIndices.map(({h}, i) => ({
-          h, par: parVals[i] ?? 4, yards: vals[i] ?? 0,
-          rank: hcpVals[i] ?? (i + 1), rankW: hcpWVals[i] ?? hcpVals[i] ?? (i + 1),
-        }));
-        const totalPar = parVals.length ? parVals.reduce((a,b)=>a+b,0) : 72;
-        teeParsed.push({ name: teeName, slope: slopeM, rating: ratingM, par: totalPar, holes });
-      }
-
-      if (!teeParsed.length) throw new Error('no tee rows found');
-
-      // Use the Wikipedia article title as course name
+      const tees = parseHTMLScorecard(html);
+      if (!tees.length) throw new Error('no table');
       const courseName = data?.parse?.title ?? title;
-      setManualCourse(c => ({
-        ...c,
-        name: c.name || courseName,
-        tees: teeParsed,
-      }));
-      setWikiStatus('done');
-      setWikiResults([]);
-      showToast(`Loaded ${teeParsed.length} tee${teeParsed.length!==1?'s':''} from Wikipedia`, 'success');
-    } catch (e) {
-      console.error('Wiki load error:', e);
-      setWikiStatus('error');
-    }
+      setManualCourse(c => ({...c, name: c.name || courseName, tees}));
+      setUrlStatus('done'); setUrlResults([]);
+      showToast(`Loaded ${tees.length} tee${tees.length!==1?'s':''} from Wikipedia`, 'success');
+    } catch(e) { console.error('Wiki article:', e); setUrlStatus('error'); }
   };
 
   const runScan = async () => {
@@ -2562,6 +2587,8 @@ function GolfScoringApp() {
       const { data: { text } } = await (worker as any).recognize(processed);
       await (worker as any).terminate();
 
+      setRawOcrText(text);
+      setShowRawOcr(false);
       const parsedTees = parseScorecardOCR(text);
       setManualCourse(c => {
         // Merge all parsed tees — replace existing same-name tees, append new ones
@@ -2573,6 +2600,16 @@ function GolfScoringApp() {
         }
         return { ...c, tees: merged.length ? merged : parsedTees };
       });
+      // Detect quality issues
+      const totalHoles = parsedTees.reduce((s, t) => s + t.holes.filter(h => h.yards > 0).length, 0);
+      const missingPar = parsedTees.some(t => t.holes.every(h => h.par === 4));
+      const missingHcp = parsedTees.some(t => t.holes.every((h, i) => h.rank === i + 1));
+      const warnings: string[] = [];
+      if (parsedTees.length === 0) warnings.push('No tee data found.');
+      else if (totalHoles < 9) warnings.push(`Only ${totalHoles} hole${totalHoles !== 1 ? 's' : ''} detected — expected 18.`);
+      if (missingPar) warnings.push('Par values may be incorrect (all holes show par 4).');
+      if (missingHcp) warnings.push('Handicap ranks may be incorrect (sequential 1–18 detected).');
+      setOcrWarning(warnings.join(' '));
       setScanStatus('done');
     } catch (e) {
       console.error('Scorecard scan failed:', e);
@@ -3405,27 +3442,34 @@ function GolfScoringApp() {
       <BG>
       <TopBar title={editingCourseId ? 'Edit Course' : 'Add a Course'} back={()=>{ setEditingCourseId(null); setScreen('admin'); }}/>
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
-        {/* ── Wikipedia Course Search ─────────────────────────────────── */}
+        {/* ── Course Data Import ────────────────────────────────────────── */}
         <div className="rounded-2xl p-4 border border-blue-500/30" style={{background:'rgba(30,64,175,0.07)'}}>
-          <div className="text-xs font-bold text-blue-300 tracking-widest uppercase mb-3 flex items-center gap-2">
-            🔍 Search Course Data
-            <span className="text-blue-300/50 font-normal normal-case tracking-normal">— pulls from Wikipedia, free</span>
+          <div className="text-xs font-bold text-blue-300 tracking-widest uppercase mb-1 flex items-center gap-2">
+            🔍 Import Course Data
           </div>
+          <p className="text-xs text-white/40 mb-3">
+            Paste the URL of your course's scorecard page or PDF — or type the course name to search Wikipedia.
+            Most club websites and golf directories work. <span className="text-blue-300/70">No account or API key needed.</span>
+          </p>
           <div className="flex gap-2">
             <input
-              value={wikiQuery} onChange={e=>setWikiQuery(e.target.value)}
-              onKeyDown={e=>e.key==='Enter'&&searchWiki()}
-              placeholder="e.g. TPC Sawgrass, Pebble Beach..."
+              value={urlInput} onChange={e=>setUrlInput(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&searchByName()}
+              placeholder="URL (e.g. myclub.com/scorecard) or course name…"
               className="flex-1 px-3 py-2 rounded-xl text-white text-sm border border-white/10 outline-none"
               style={{background:'rgba(255,255,255,0.07)'}}/>
-            <Btn color="blue" sm onClick={searchWiki} disabled={wikiStatus==='searching'||wikiStatus==='loading'}>
-              {wikiStatus==='searching'||wikiStatus==='loading' ? '...' : 'Search'}
+            <Btn color="blue" sm onClick={searchByName} disabled={urlStatus==='searching'||urlStatus==='loading'}>
+              {urlStatus==='searching'||urlStatus==='loading' ? '…' : 'Go'}
             </Btn>
           </div>
-          {wikiResults.length>0&&(
+          <p className="text-xs text-white/30 mt-1.5">
+            💡 Try: your club's website → scorecard page → copy URL above.
+            Wikipedia works for major venues (TPC Sawgrass, Pebble Beach…).
+          </p>
+          {urlResults.length>0&&(
             <div className="mt-2 space-y-1">
-              {wikiResults.map(r=>(
-                <button key={r.title} onClick={()=>loadWikiCourse(r.title)}
+              {urlResults.map(r=>(
+                <button key={r.title} onClick={()=>loadWikiArticle(r.title)}
                   className="w-full text-left px-3 py-2 rounded-xl text-sm text-white hover:bg-white/10 border border-white/5 transition-all"
                   style={{background:'rgba(255,255,255,0.04)'}}>
                   <span className="font-semibold text-blue-200">{r.title}</span>
@@ -3433,14 +3477,17 @@ function GolfScoringApp() {
               ))}
             </div>
           )}
-          {wikiStatus==='done'&&(
+          {urlStatus==='done'&&(
             <div className="mt-2 rounded-xl p-2 text-xs font-bold text-emerald-300 text-center" style={{background:'rgba(16,185,129,0.1)'}}>
-              ✓ Scorecard loaded — review and adjust below before saving
+              ✓ Scorecard data loaded — review the table below then save
             </div>
           )}
-          {wikiStatus==='error'&&wikiResults.length===0&&(
-            <div className="mt-2 rounded-xl p-2 text-xs font-bold text-orange-300 text-center" style={{background:'rgba(249,115,22,0.1)'}}>
-              No scorecard found on Wikipedia — try the photo scan or enter manually below
+          {urlStatus==='error'&&urlResults.length===0&&(
+            <div className="mt-2 space-y-1">
+              <div className="rounded-xl p-2 text-xs font-bold text-orange-300 text-center" style={{background:'rgba(249,115,22,0.1)'}}>
+                No scorecard table found — the page may require a login or use a non-table layout
+              </div>
+              <p className="text-xs text-white/30 text-center">Try the scorecard photo scan below, or enter data manually</p>
             </div>
           )}
         </div>
@@ -3457,13 +3504,13 @@ function GolfScoringApp() {
               <span className="text-4xl select-none">📷</span>
               <div className="flex-1">
                 <div className="text-white font-semibold text-sm">Tap to take photo or upload</div>
-                <div className="text-white/40 text-xs mt-0.5">Point camera at one tee's scorecard row · repeat for each tee</div>
+                <div className="text-white/40 text-xs mt-0.5">Best results: flat on table · bright even light · no glare · full scorecard visible · all 18 holes in frame</div>
               </div>
               <input ref={scanInputRef} type="file" accept="image/*" className="hidden"
                 onChange={e=>{
                   const file=e.target.files?.[0]; if(!file) return;
                   const reader=new FileReader();
-                  reader.onload=ev=>{ setScanImg(ev.target?.result as string); setScanStatus('idle'); setScanPct(0); };
+                  reader.onload=ev=>{ setScanImg(ev.target?.result as string); setScanStatus('idle'); setScanPct(0); setOcrWarning(''); setRawOcrText(''); setShowRawOcr(false); };
                   reader.readAsDataURL(file);
                   // reset so same file can be re-selected
                   e.target.value='';
@@ -3489,18 +3536,46 @@ function GolfScoringApp() {
                 </div>
               )}
               {scanStatus==='done'&&(
-                <div className="rounded-xl p-3 text-xs font-bold text-emerald-300 text-center" style={{background:'rgba(16,185,129,0.12)'}}>
-                  ✓ Extracted {manualCourse.tees.filter(t=>t.holes.some(h=>h.yards>0)).length} tee{manualCourse.tees.filter(t=>t.holes.some(h=>h.yards>0)).length!==1?'s':''} — review the table below and save
+                <div className="space-y-2">
+                  {ocrWarning ? (
+                    <div className="rounded-xl p-3 text-xs font-bold text-amber-300" style={{background:'rgba(245,158,11,0.12)'}}>
+                      ⚠ {ocrWarning}
+                      <div className="font-normal mt-1 text-amber-200/70">Review the table below and correct any errors. Tips: lay scorecard flat, use bright even lighting, avoid glare, ensure all 18 holes are in frame.</div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl p-3 text-xs font-bold text-emerald-300 text-center" style={{background:'rgba(16,185,129,0.12)'}}>
+                      ✓ Extracted {manualCourse.tees.filter(t=>t.holes.some(h=>h.yards>0)).length} tee{manualCourse.tees.filter(t=>t.holes.some(h=>h.yards>0)).length!==1?'s':''} — review the table below and save
+                    </div>
+                  )}
+                  {rawOcrText&&(
+                    <div>
+                      <button onClick={()=>setShowRawOcr(v=>!v)} className="text-xs text-white/40 underline">
+                        {showRawOcr?'Hide':'Show'} raw OCR text
+                      </button>
+                      {showRawOcr&&(
+                        <pre className="mt-1 p-2 rounded-lg text-xs text-white/50 overflow-x-auto max-h-40 whitespace-pre-wrap" style={{background:'rgba(0,0,0,0.4)',fontFamily:'monospace',fontSize:'10px'}}>
+                          {rawOcrText}
+                        </pre>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
               {scanStatus==='error'&&(
-                <div className="rounded-xl p-3 text-xs font-bold text-red-300 text-center" style={{background:'rgba(239,68,68,0.12)'}}>
-                  ✕ Couldn't read scorecard clearly — try a brighter/flatter photo, or enter manually below
+                <div className="rounded-xl p-3 text-xs font-bold text-red-300" style={{background:'rgba(239,68,68,0.12)'}}>
+                  <div className="text-center mb-2">✕ Couldn't read scorecard — try again with a better photo</div>
+                  <ul className="font-normal text-red-200/70 space-y-0.5">
+                    <li>• Lay scorecard flat on a table</li>
+                    <li>• Use bright, even lighting — no shadows</li>
+                    <li>• Avoid glare and reflections</li>
+                    <li>• Keep all 18 holes visible in frame</li>
+                    <li>• Hold phone steady directly above card</li>
+                  </ul>
                 </div>
               )}
               {(scanStatus==='done'||scanStatus==='error')&&(
-                <Btn color="ghost" sm onClick={()=>{setScanImg(null);setScanStatus('idle');setScanPct(0);}} className="w-full">
-                  Scan Another Tee Photo
+                <Btn color="ghost" sm onClick={()=>{setScanImg(null);setScanStatus('idle');setScanPct(0);setOcrWarning('');setRawOcrText('');setShowRawOcr(false);}} className="w-full">
+                  Scan Another Photo
                 </Btn>
               )}
             </div>
