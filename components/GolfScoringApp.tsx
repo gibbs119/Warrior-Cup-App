@@ -148,13 +148,13 @@ const PRESET_COURSES: Course[] = [
         {h:13,par:3,yards:185,rank:17},{h:14,par:4,yards:415,rank:6},{h:15,par:4,yards:386,rank:2},
         {h:16,par:3,yards:166,rank:15},{h:17,par:4,yards:416,rank:10},{h:18,par:4,yards:422,rank:8},
       ]},
-      { name:'Blue', slope:123, rating:69.9, par:71, holes:[
-        {h:1,par:5,yards:524,rank:3},{h:2,par:4,yards:347,rank:12},{h:3,par:4,yards:413,rank:1},
-        {h:4,par:4,yards:339,rank:14},{h:5,par:4,yards:371,rank:13},{h:6,par:3,yards:206,rank:9},
-        {h:7,par:4,yards:431,rank:7},{h:8,par:3,yards:134,rank:16},{h:9,par:5,yards:545,rank:5},
-        {h:10,par:4,yards:333,rank:18},{h:11,par:5,yards:529,rank:4},{h:12,par:4,yards:355,rank:11},
-        {h:13,par:3,yards:173,rank:17},{h:14,par:4,yards:387,rank:6},{h:15,par:4,yards:360,rank:2},
-        {h:16,par:3,yards:155,rank:15},{h:17,par:4,yards:388,rank:10},{h:18,par:4,yards:393,rank:8},
+      { name:'Blue', slope:130, rating:69.3, par:71, holes:[
+        {h:1,par:5,yards:517,rank:3},{h:2,par:4,yards:333,rank:12},{h:3,par:4,yards:396,rank:1},
+        {h:4,par:4,yards:350,rank:14},{h:5,par:4,yards:347,rank:13},{h:6,par:3,yards:185,rank:9},
+        {h:7,par:4,yards:394,rank:7},{h:8,par:3,yards:118,rank:16},{h:9,par:5,yards:525,rank:5},
+        {h:10,par:4,yards:319,rank:18},{h:11,par:5,yards:521,rank:4},{h:12,par:4,yards:316,rank:11},
+        {h:13,par:3,yards:139,rank:17},{h:14,par:4,yards:373,rank:6},{h:15,par:4,yards:328,rank:2},
+        {h:16,par:3,yards:141,rank:15},{h:17,par:4,yards:333,rank:10},{h:18,par:4,yards:373,rank:8},
       ]},
       { name:'White', slope:113, rating:67.9, par:71, holes:[
         {h:1,par:5,yards:488,rank:3},{h:2,par:4,yards:323,rank:12},{h:3,par:4,yards:385,rank:1},
