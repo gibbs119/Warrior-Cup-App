@@ -577,8 +577,8 @@ function preprocessForOCR(src: string): Promise<string> {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
-      // Scale up small images so Tesseract has more pixels to work with
-      const scale = Math.max(1, Math.min(3, 1600 / img.width));
+      // Scale up to at least 2000px wide so Tesseract has plenty of pixels
+      const scale = Math.max(1, Math.min(4, 2000 / img.width));
       const w = Math.round(img.width * scale);
       const h = Math.round(img.height * scale);
       const canvas = document.createElement('canvas');
@@ -587,9 +587,31 @@ function preprocessForOCR(src: string): Promise<string> {
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, w, h);
       const d = ctx.getImageData(0, 0, w, h);
+      // Step 1: greyscale
+      const grey = new Uint8Array(w * h);
       for (let i = 0; i < d.data.length; i += 4) {
-        const gray = 0.299*d.data[i] + 0.587*d.data[i+1] + 0.114*d.data[i+2];
-        const c = Math.max(0, Math.min(255, (gray - 128) * 1.8 + 128));
+        grey[i >> 2] = Math.round(0.299 * d.data[i] + 0.587 * d.data[i+1] + 0.114 * d.data[i+2]);
+      }
+      // Step 2: Otsu threshold for binarisation (handles variable lighting)
+      const hist = new Array(256).fill(0);
+      for (let j = 0; j < grey.length; j++) hist[grey[j]]++;
+      const total = grey.length;
+      let sum = 0;
+      for (let i = 0; i < 256; i++) sum += i * hist[i];
+      let sumB = 0, wB = 0, max = 0, thresh = 128;
+      for (let i = 0; i < 256; i++) {
+        wB += hist[i]; if (!wB) continue;
+        const wF = total - wB; if (!wF) break;
+        sumB += i * hist[i];
+        const mB = sumB / wB, mF = (sum - sumB) / wF;
+        const between = wB * wF * (mB - mF) * (mB - mF);
+        if (between > max) { max = between; thresh = i; }
+      }
+      // Step 3: write binarised pixels + boost contrast around threshold
+      for (let i = 0; i < d.data.length; i += 4) {
+        const g = grey[i >> 2];
+        // Soft binarise: values well below thresh → black, well above → white
+        const c = g < thresh ? Math.max(0, g - 20) : Math.min(255, g + 20);
         d.data[i] = d.data[i+1] = d.data[i+2] = c;
       }
       ctx.putImageData(d, 0, 0);
@@ -600,61 +622,141 @@ function preprocessForOCR(src: string): Promise<string> {
 }
 
 /**
- * Parse raw OCR text from a single-tee scorecard image into a Tee object.
- * Works by identifying rows whose number patterns match par (3-5),
- * yardage (80-800), or handicap-rank (1-18 unique per 9) signatures.
+ * Parse raw OCR text from a scorecard image into a Tee object.
+ *
+ * Handles two common physical scorecard layouts:
+ *   Layout A – row-per-tee: one row of 9 yardages per tee, then par row, then HCP row
+ *   Layout B – column-per-hole: each row = one hole with yardage(s), par, HCP
+ *
+ * Key improvements over v1:
+ *   • Detects and skips sequential hole-number rows (1-9, 10-18) so they are
+ *     never mistaken for HCP rows.
+ *   • Sliding-window search across all numbers in a line so HCP data is found
+ *     even when it follows hole numbers on the same OCR line.
+ *   • Deduplicates identical detected rows (totals rows, repeated headers).
+ *   • Layout B detection for blended multi-tee scorecards printed column-per-hole.
  */
 function parseScorecardOCR(rawText: string): Tee {
   const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
 
+  // ── Pass 1: metadata (tee name, rating, slope) ──────────────────────────
   let teeName = 'Main';
   let slope = 113;
   let rating = 72.0;
-
-  const yardsRows: number[][] = [];
-  const parRows: number[][] = [];
-  const hcpRows: number[][] = [];
+  let ratingFound = false;
 
   for (const line of lines) {
-    // Detect tee colour name
     const teeMatch = line.match(/\b(GOLD|BLUE|WHITE|RED|BLACK|SILVER|GREEN|BRONZE)\b/i);
-    if (teeMatch) {
-      const t = teeMatch[1]; teeName = t[0].toUpperCase() + t.slice(1).toLowerCase();
+    if (teeMatch && teeName === 'Main') {
+      const t = teeMatch[1];
+      teeName = t[0].toUpperCase() + t.slice(1).toLowerCase();
     }
-
-    // Detect course rating (decimal 60.0–80.9) and slope on same line
     const ratingMatch = line.match(/\b(6[0-9]|7[0-9])\.\d\b/);
-    if (ratingMatch) {
+    if (ratingMatch && !ratingFound) {
       rating = parseFloat(ratingMatch[0]);
+      ratingFound = true;
       const integers = (line.match(/\b\d+\b/g) ?? []).map(Number);
       const s = integers.find(n => n >= 55 && n <= 155);
       if (s) slope = s;
     }
+  }
 
-    // Extract integers from this line
-    const nums = (line.match(/\b\d+\b/g) ?? []).map(Number);
-    if (nums.length < 9) continue;
-    const first9 = nums.slice(0, 9);
-    const next9  = nums.slice(9, 18);
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  /** True when arr is exactly [1…9] or [10…18] in any order with no repeats */
+  const isHoleNumRow = (arr: number[]) => {
+    if (arr.length !== 9) return false;
+    const sorted = [...arr].sort((a, b) => a - b);
+    return (sorted[0] === 1  && sorted[8] === 9  && new Set(sorted).size === 9) ||
+           (sorted[0] === 10 && sorted[8] === 18 && new Set(sorted).size === 9);
+  };
 
-    if (first9.every(n => n >= 3 && n <= 5)) {
-      parRows.push(first9);
-      if (next9.length === 9 && next9.every(n => n >= 3 && n <= 5)) parRows.push(next9);
-    } else if (first9.every(n => n >= 80 && n <= 800)) {
-      yardsRows.push(first9);
-      if (next9.length === 9 && next9.every(n => n >= 80 && n <= 800)) yardsRows.push(next9);
-    } else if (first9.every(n => n >= 1 && n <= 18) && new Set(first9).size === 9) {
-      hcpRows.push(first9);
-      if (next9.length >= 9) {
-        const n9 = next9.slice(0, 9);
-        if (n9.every(n => n >= 1 && n <= 18) && new Set(n9).size === 9) hcpRows.push(n9);
-      }
+  const isYards9  = (a: number[]) => a.length === 9 && a.every(n => n >= 80 && n <= 800);
+  const isPar9    = (a: number[]) => a.length === 9 && a.every(n => n >= 3 && n <= 5);
+  const isHcp9    = (a: number[]) =>
+    a.length === 9 && !isHoleNumRow(a) &&
+    a.every(n => n >= 1 && n <= 18) && new Set(a).size === 9;
+
+  /** Slide a 9-wide window across nums and return first chunk passing predicate */
+  const findChunk = (nums: number[], pred: (c: number[]) => boolean) => {
+    for (let i = 0; i + 9 <= nums.length; i++) {
+      const chunk = nums.slice(i, i + 9);
+      if (pred(chunk)) return chunk;
+    }
+    return null;
+  };
+
+  const dedup = (rows: number[][]): number[][] => {
+    const seen = new Set<string>();
+    return rows.filter(r => { const k = r.join(','); if (seen.has(k)) return false; seen.add(k); return true; });
+  };
+
+  // ── Detect Layout B (column-per-hole) ───────────────────────────────────
+  // Heuristic: ≥9 lines each carrying exactly one hole worth of data
+  // (4-8 nums, first number being a valid hole index 1-18).
+  const colLines = lines.filter(l => {
+    const ns = (l.match(/\b\d+\b/g) ?? []).map(Number);
+    return ns.length >= 4 && ns.length <= 9 && ns[0] >= 1 && ns[0] <= 18;
+  });
+  const longLines = lines.filter(l => (l.match(/\b\d+\b/g) ?? []).length >= 10);
+
+  if (colLines.length >= 9 && colLines.length > longLines.length) {
+    // Layout B: each row = one hole
+    const holeMap = new Map<number, Hole>();
+
+    for (const line of colLines) {
+      const nums = (line.match(/\b\d+\b/g) ?? []).map(Number);
+      const hNum = nums[0];
+      if (hNum < 1 || hNum > 18 || holeMap.has(hNum)) continue;
+
+      // par: first num in 3-5 range after index 0
+      const parVal = nums.slice(1).find(n => n >= 3 && n <= 5) ?? 4;
+      // yards: first num in 80-800
+      const yardsVal = nums.find(n => n >= 80 && n <= 800) ?? 0;
+      // hcp: num in 1-18 that comes AFTER a yardage value
+      const yardsIdx = nums.findIndex(n => n >= 80 && n <= 800);
+      const hcpVal = yardsIdx >= 0
+        ? (nums.slice(yardsIdx + 1).find(n => n >= 1 && n <= 18) ?? hNum)
+        : hNum;
+
+      holeMap.set(hNum, { h: hNum, par: parVal, yards: yardsVal, rank: hcpVal });
+    }
+
+    if (holeMap.size >= 9) {
+      const holes = Array.from(holeMap.values()).sort((a, b) => a.h - b.h);
+      const totalPar = holes.reduce((s, h) => s + h.par, 0);
+      return { name: teeName, slope, rating, par: totalPar, holes };
     }
   }
 
-  const yards18 = [...(yardsRows[0] ?? []), ...(yardsRows[1] ?? [])];
-  const par18   = [...(parRows[0]   ?? []), ...(parRows[1]   ?? [])];
-  const hcp18   = [...(hcpRows[0]   ?? []), ...(hcpRows[1]   ?? [])];
+  // ── Layout A (row-per-tee) ───────────────────────────────────────────────
+  const yardsRows: number[][] = [];
+  const parRows:   number[][] = [];
+  const hcpRows:   number[][] = [];
+
+  for (const line of lines) {
+    const nums = (line.match(/\b\d+\b/g) ?? []).map(Number);
+    if (nums.length < 9) continue;
+
+    // Try yards first (highest specificity)
+    const yc = findChunk(nums, isYards9);
+    if (yc) { yardsRows.push(yc); continue; }
+
+    // Try par
+    const pc = findChunk(nums, isPar9);
+    if (pc) { parRows.push(pc); continue; }
+
+    // Try HCP — sliding window skips sequential hole-number sequences automatically
+    const hc = findChunk(nums, isHcp9);
+    if (hc) { hcpRows.push(hc); }
+  }
+
+  const uy = dedup(yardsRows);
+  const up = dedup(parRows);
+  const uh = dedup(hcpRows);
+
+  const yards18 = [...(uy[0] ?? []), ...(uy[1] ?? [])];
+  const par18   = [...(up[0] ?? []), ...(up[1] ?? [])];
+  const hcp18   = [...(uh[0] ?? []), ...(uh[1] ?? [])];
 
   const holeCount = Math.max(yards18.length, par18.length, 9);
   const holes: Hole[] = Array.from({ length: holeCount }, (_, i) => ({
