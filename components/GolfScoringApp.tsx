@@ -44,17 +44,22 @@ const FORMATS: Record<string,{name:string;ppp:number;hcpType:string;holesOpts:nu
   greensomes:       { name:'Greensomes',         ppp:2, hcpType:'6040',  holesOpts:[9,18], desc:'Pick best drive, alternate from there',                  pointsPerMatchup:1, numMatchups:2 },
   alternateshot:    { name:'Alternate Shot',     ppp:2, hcpType:'avg',   holesOpts:[9,18], desc:'Partners alternate shots',                                pointsPerMatchup:1, numMatchups:2 },
   singles:          { name:'Singles',            ppp:1, hcpType:'full',  holesOpts:[9,18], desc:'4 individual 1v1 matches — 4 pts',                       pointsPerMatchup:1, numMatchups:4 },
+  singles1v1:       { name:'1v1 Singles',        ppp:1, hcpType:'full',  holesOpts:[9,18], desc:'1 individual 1v1 match play — 1 pt',                       pointsPerMatchup:1, numMatchups:1 },
 };
 
 const getMatchupPairs = (format: string): [string,string][] =>
   format==='singles'
     ? [['t1p1','t2p1'],['t1p2','t2p2'],['t1p3','t2p3'],['t1p4','t2p4']]
-    : [['t1p1','t2p1'],['t1p2','t2p2']];
+    : format==='singles1v1'
+      ? [['t1p1','t2p1']]
+      : [['t1p1','t2p1'],['t1p2','t2p2']];
 
 const getEmptyPairings = (format: string) => {
   const slots = format==='singles'
     ? ['t1p1','t1p2','t1p3','t1p4','t2p1','t2p2','t2p3','t2p4']
-    : ['t1p1','t1p2','t2p1','t2p2'];
+    : format==='singles1v1'
+      ? ['t1p1','t2p1']
+      : ['t1p1','t1p2','t2p1','t2p2'];
   return {
     pairings:    Object.fromEntries(slots.map(k=>[k,[]])) as Record<string,string[]>,
     pairingHcps: Object.fromEntries(slots.map(k=>[k,0]))  as Record<string,number>,
@@ -2071,7 +2076,7 @@ function GolfScoringApp() {
     if (!ids?.length) return null;
     const raw = ids.map(id=>scores[id]?.[hole-1]).filter((v): v is number => v!=null);
     if (!raw.length) return null;
-    return (m.format==='bestball'||m.format==='singles') ? Math.min(...raw) : raw[0];
+    return (m.format==='bestball'||m.format==='singles'||m.format==='singles1v1') ? Math.min(...raw) : raw[0];
   };
 
   const calcHoleResults = (m: Match, hole: number, scores: Record<string,(number|null)[]>, tee: Tee|null) => {
@@ -3861,11 +3866,13 @@ function GolfScoringApp() {
                 onChange={setMatchCourseTee} options={allTeeOpts}/>
               {isSgl ? (
                 <div>
-                  <div className="text-xs font-bold text-gray-600 mb-2 tracking-wider uppercase">4 Individual Matchups (1pt each)</div>
+                  <div className="text-xs font-bold text-gray-600 mb-2 tracking-wider uppercase">
+                    {fmt.numMatchups === 1 ? '1v1 Match Play (1pt)' : `${fmt.numMatchups} Individual Matchups (1pt each)`}
+                  </div>
                   <div className="grid grid-cols-1 gap-2">
-                    {([['t1p1','t2p1'],['t1p2','t2p2'],['t1p3','t2p3'],['t1p4','t2p4']] as const).map(([a,b],i)=>(
+                    {getMatchupPairs(m.format).map(([a,b],i)=>(
                       <div key={i} className="p-3 rounded-xl border border-white/10" style={{background:'rgba(255,255,255,0.04)'}}>
-                        <div className="text-xs font-bold text-white/40 mb-2">Match {i+1}</div>
+                        {fmt.numMatchups > 1 && <div className="text-xs font-bold text-white/40 mb-2">Match {i+1}</div>}
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <div className="text-xs text-blue-300 font-bold mb-1">{tData?.teamNames?.team1??'Team 1'}</div>
@@ -4176,7 +4183,7 @@ function GolfScoringApp() {
           const oppPk2=pk2.startsWith('t1')?(pk2==='t1p1'?'t2p1':'t2p2'):(pk2==='t2p1'?'t1p1':'t1p2');
           const pSt2=matchTee?bestBallStrokes(m,pk2,oppPk2,rank2,matchTee,players):{};
           for (const id of pIds2){const sc=localScores[id]?.[h-1];if(sc==null)continue;runningNetVsPar[id]=(runningNetVsPar[id]??0)+(sc-(pSt2[id]??0))-hd2.par;}
-        } else if (m.format==='singles') {
+        } else if (m.format==='singles'||m.format==='singles1v1') {
           const oppPk2=pk2.startsWith('t1')?pk2.replace('t1','t2'):pk2.replace('t2','t1');
           const{t1:st1,t2:st2}=matchplayStrokes(m.pairingHcps[pk2]??0,m.pairingHcps[oppPk2]??0,rank2);
           const myStrk2=pk2.startsWith('t1')?st1:st2;
@@ -4658,7 +4665,7 @@ function GolfScoringApp() {
             <div className={`grid gap-3 ${isLandscape?'grid-cols-2':'grid-cols-1'}`}>
               {matchPairs.map(([a,b],i)=>(
                 <div key={i} className="p-4 rounded-2xl card-dark">
-                  <div className="text-xs font-bold text-white/30 mb-3 tracking-widest uppercase">Match {i+1}</div>
+                  {matchPairs.length > 1 && <div className="text-xs font-bold text-white/30 mb-3 tracking-widest uppercase">Match {i+1}</div>}
                   <PairEntry pk={a}/>
                   <div className="text-center text-white/20 text-xs my-2 font-bold">VS</div>
                   <PairEntry pk={b}/>
