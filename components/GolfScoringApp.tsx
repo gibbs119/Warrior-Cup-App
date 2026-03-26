@@ -1316,7 +1316,8 @@ function GolfScoringApp() {
     setExpandedMatches(prev=>({...prev,[mid]:!prev[mid]})),
     []
   );
-  const [manualCourse, setManualCourse] = useState<Course>({id:'',name:'',location:'',tees:[blankTee()]});
+  const [manualCourse, setManualCourse]     = useState<Course>({id:'',name:'',location:'',tees:[blankTee()]});
+  const [editingCourseId, setEditingCourseId] = useState<string|null>(null);
   const [scanImg, setScanImg]         = useState<string|null>(null);
   const [scanStatus, setScanStatus]   = useState<'idle'|'scanning'|'done'|'error'>('idle');
   const [scanPct, setScanPct]         = useState(0);
@@ -2243,9 +2244,35 @@ function GolfScoringApp() {
   };
 
   const addCourse = async (course: Course) => {
-    await updateTournament(d=>({...d,courses:[...(d.courses||[]).filter(c=>c.id!==course.id),course]}));
-    showToast('Course added successfully', 'success');
+    const isUpdate = !!(tData?.courses ?? []).find(c => c.id === course.id);
+    let affectedCount = 0;
+    await updateTournament(d => {
+      const updatedCourses = [...(d.courses||[]).filter(c=>c.id!==course.id), course];
+      // Recalculate pairingHcps for every match that uses this course so any
+      // slope/rank corrections immediately flow through to strokes & skins.
+      const updatedMatches = (d.matches || []).map(m => {
+        const cid = m.courseId ?? d.activeCourseId;
+        if (cid !== course.id) return m;
+        const tid = m.teeId ?? d.activeTeeId;
+        const tee = course.tees.find(t => t.name === tid);
+        if (!tee) return m;
+        const newHcps: Record<string,number> = {};
+        for (const [pk, ids] of Object.entries(m.pairings || {})) {
+          if ((ids as string[])?.length)
+            newHcps[pk] = pairingPlayingHcp(ids as string[], m.format, tee, d.players || []);
+        }
+        affectedCount++;
+        return { ...m, pairingHcps: newHcps };
+      });
+      return { ...d, courses: updatedCourses, matches: updatedMatches };
+    });
+    if (isUpdate) {
+      showToast(`Course updated · handicaps recalculated for ${affectedCount} match${affectedCount!==1?'es':''}`, 'success');
+    } else {
+      showToast('Course added successfully', 'success');
+    }
     setManualCourse({id:'',name:'',location:'',tees:[blankTee()]});
+    setEditingCourseId(null);
     setScreen('admin');
   };
 
@@ -2970,16 +2997,25 @@ function GolfScoringApp() {
                   <div className="font-bold text-white text-sm">{c.name}</div>
                   {c.location&&<div className="text-xs text-white/30">{c.location}</div>}
                 </div>
-                <button onClick={async()=>{
-                  if (!confirm(`Delete ${c.name}? This cannot be undone.`)) return;
-                  try {
-                    await updateTournament(d=>({...d,courses:(d.courses||[]).filter(x=>x.id!==c.id)}));
-                  } catch (err) {
-                    console.error('Failed to delete course:', err);
-                    showToast('Error deleting course. Please try again.', 'error');
-                  }
-                }}
-                  className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3 h-3"/></button>
+                <div className="flex items-center gap-1">
+                  <button onClick={()=>{
+                    setManualCourse(c);
+                    setEditingCourseId(c.id);
+                    setScanImg(null); setScanStatus('idle'); setScanPct(0);
+                    setScreen('courseSearch');
+                  }} className="p-1.5 text-white/30 hover:text-teal-400" title="Edit course">
+                    ✏️
+                  </button>
+                  <button onClick={async()=>{
+                    if (!confirm(`Delete ${c.name}? This cannot be undone.`)) return;
+                    try {
+                      await updateTournament(d=>({...d,courses:(d.courses||[]).filter(x=>x.id!==c.id)}));
+                    } catch (err) {
+                      console.error('Failed to delete course:', err);
+                      showToast('Error deleting course. Please try again.', 'error');
+                    }
+                  }} className="p-1.5 text-white/20 hover:text-red-400"><Trash2 className="w-3 h-3"/></button>
+                </div>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {(c.tees??[]).map(t=>{
@@ -3027,7 +3063,7 @@ function GolfScoringApp() {
   if (screen==='courseSearch') {
     return (
       <BG>
-      <TopBar title="Add a Course" back={()=>setScreen('admin')}/>
+      <TopBar title={editingCourseId ? 'Edit Course' : 'Add a Course'} back={()=>{ setEditingCourseId(null); setScreen('admin'); }}/>
       <div className="max-w-2xl mx-auto p-4 space-y-4 pb-8 safe-bottom">
         {/* ── Scan from Photo ───────────────────────────────────────────── */}
         <div className="rounded-2xl p-4 border-2 border-dashed border-teal-500/40" style={{background:'rgba(20,184,166,0.05)'}}>
@@ -3092,7 +3128,7 @@ function GolfScoringApp() {
         </div>
 
         <Card className="p-5">
-          <p className="text-xs text-white/40 mb-4">Review or enter course details manually. All preset courses are already available.</p>
+          <p className="text-xs text-white/40 mb-4">{editingCourseId ? 'Edit tee data below. Saving will instantly recalculate handicap strokes for all matches on this course.' : 'Review or enter course details manually. All preset courses are already available.'}</p>
           <div className="grid grid-cols-2 gap-3 mb-4">
             <Inp label="Course Name" value={manualCourse.name} onChange={v=>setManualCourse(c=>({...c,name:v}))} placeholder="e.g. Pebble Beach"/>
             <Inp label="Location" value={manualCourse.location} onChange={v=>setManualCourse(c=>({...c,location:v}))} placeholder="e.g. Pebble Beach, CA"/>
@@ -3135,9 +3171,9 @@ function GolfScoringApp() {
           <button onClick={()=>setManualCourse(c=>({...c,tees:[...c.tees,blankTee()]}))} className="flex items-center gap-1.5 text-sm text-teal-400 font-bold mb-5 hover:text-teal-300">
             <Plus className="w-4 h-4"/>Add tee box
           </button>
-          <Btn color="gold" disabled={!manualCourse.name.trim()} onClick={()=>addCourse({...manualCourse,id:'m'+Date.now()})} className="w-full flex items-center justify-center gap-2 py-4">
+          <Btn color="gold" disabled={!manualCourse.name.trim()} onClick={()=>addCourse({...manualCourse, id: editingCourseId || 'm'+Date.now()})} className="w-full flex items-center justify-center gap-2 py-4">
             <Check className="w-5 h-5"/>
-            <span className="font-bebas text-lg">Add Course to Tournament</span>
+            <span className="font-bebas text-lg">{editingCourseId ? 'Save Changes & Recalculate' : 'Add Course to Tournament'}</span>
           </Btn>
         </Card>
       </div>
