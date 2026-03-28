@@ -1553,6 +1553,39 @@ function GolfScoringApp() {
   const localScoresRef = useRef<Record<string,(number|null)[]>>({});
   useEffect(() => { localScoresRef.current = localScores; }, [localScores]);
 
+  // ── Migrate legacy match results: backfill pairingWon/pairingHalved ──────────
+  // Old records only store team totals; derive per-pairing outcome from
+  // pointsContributed (which was always computed per-pairing correctly).
+  useEffect(() => {
+    if (!tData || !tournId) return;
+    const results = tData.matchResults ?? [];
+    const needsMigration = results.some(r =>
+      r.playerStats && Object.values(r.playerStats).some(ps => ps.pairingWon === undefined)
+    );
+    if (!needsMigration) return;
+
+    updateTournament(d => {
+      const migratedResults = (d.matchResults ?? []).map(r => {
+        if (!r.playerStats) return r;
+        const fmt = FORMATS[r.format];
+        if (!fmt || fmt.perHole) return r; // perHole: team result already correct
+        const fullShare = fmt.pointsPerMatchup / fmt.ppp; // pts a player earns for a win
+        const newStats = Object.fromEntries(
+          Object.entries(r.playerStats).map(([id, ps]) => {
+            if (ps.pairingWon !== undefined) return [id, ps]; // already migrated
+            const contrib = ps.pointsContributed ?? 0;
+            const pairingWon    = contrib >= fullShare - 0.001;
+            const pairingHalved = !pairingWon && contrib > 0.001;
+            return [id, { ...ps, pairingWon, pairingHalved }];
+          })
+        );
+        return { ...r, playerStats: newStats };
+      });
+      return { ...d, matchResults: migratedResults };
+    }).catch(err => console.error('Pairing outcome migration failed:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tData?.matchResults?.length, tournId]);
+
   // ── Global Error Handler ─────────────────────────────────────────────────────
   // Catch all unhandled promise rejections to prevent silent failures
   useEffect(() => {
