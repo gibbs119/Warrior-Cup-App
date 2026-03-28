@@ -4232,7 +4232,7 @@ function GolfScoringApp() {
         const pIds2=((m.pairings??{})[pk2]??[]).filter(Boolean) as string[];
         if (!pIds2.length) continue;
         if (m.format==='bestball') {
-          const oppPk2=pk2.startsWith('t1')?(pk2==='t1p1'?'t2p1':'t2p2'):(pk2==='t2p1'?'t1p1':'t1p2');
+          const oppPk2=pk2.startsWith('t1')?pk2.replace('t1','t2'):pk2.replace('t2','t1');
           const pSt2=matchTee?bestBallStrokes(m,pk2,oppPk2,rank2,matchTee,players):{};
           for (const id of pIds2){const sc=localScores[id]?.[h-1];if(sc==null)continue;runningNetVsPar[id]=(runningNetVsPar[id]??0)+(sc-(pSt2[id]??0))-hd2.par;}
         } else if (m.format==='singles'||m.format==='singles1v1') {
@@ -4243,7 +4243,7 @@ function GolfScoringApp() {
         } else {
           let matchStrk2=0;
           if (['scramble','greensomes','alternateshot'].includes(m.format)){
-            const oppPk2=pk2.startsWith('t1')?(pk2==='t1p1'?'t2p1':'t2p2'):(pk2==='t2p1'?'t1p1':'t1p2');
+            const oppPk2=pk2.startsWith('t1')?pk2.replace('t1','t2'):pk2.replace('t2','t1');
             const{t1:st1,t2:st2}=matchplayStrokes(m.pairingHcps[pk2]??0,m.pairingHcps[oppPk2]??0,rank2);
             matchStrk2=pk2.startsWith('t1')?st1:st2;
           } else {
@@ -4260,13 +4260,13 @@ function GolfScoringApp() {
     const PairEntry = ({pk}:{pk:string}) => {
       const ids=(m.pairings[pk]??[]).filter(Boolean);
       const isT1=pk.startsWith('t1');
-      const oppPk=isT1?(pk==='t1p1'?'t2p1':'t2p2'):(pk==='t2p1'?'t1p1':'t1p2');
+      const oppPk = pk.startsWith('t1') ? pk.replace('t1','t2') : pk.replace('t2','t1');
       // Per-match minimum: ★ only appears for pairings that get strokes
       // relative to the lowest HC in THIS match, consistent with the award.
       const skinSt=skinsStrokes(m.pairingHcps,rank);
-      const {t1:mp1}=matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank);
-      const {t1:mp2}=matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank);
-      const myStrokes=isT1?(pk==='t1p1'?mp1:mp2):(pk==='t2p1'?matchplayStrokes(m.pairingHcps?.t1p1??0,m.pairingHcps?.t2p1??0,rank).t2:matchplayStrokes(m.pairingHcps?.t1p2??0,m.pairingHcps?.t2p2??0,rank).t2);
+      const myHcp = m.pairingHcps?.[pk] ?? 0;
+      const oppHcp = m.pairingHcps?.[oppPk] ?? 0;
+      const myStrokes = matchplayStrokes(myHcp, oppHcp, rank).t1;
       const isScramble=['scramble','alternateshot','modifiedscramble','greensomes'].includes(m.format);
       const isBestBall = m.format === 'bestball';
       
