@@ -25,7 +25,7 @@ interface MatchResult {
   teamPoints: Record<string,number>; totalPoints: number;
   team1HolesWon: number; team2HolesWon: number;
   leader: string|null; playerSkins: Record<string,number>; completedAt: string;
-  playerStats?: Record<string,{pointsContributed:number;netUnderPar:number;matchWon:boolean}>;
+  playerStats?: Record<string,{pointsContributed:number;netUnderPar:number;matchWon:boolean;pairingWon?:boolean;pairingHalved?:boolean}>;
 }
 interface Tournament {
   id: string; name: string; passcode: string; adminPasscode: string; viewerPasscode?: string;
@@ -1311,16 +1311,20 @@ function exportTournamentCSV(tData: Tournament) {
     for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
       const ids = (rawIds as string[]).filter(Boolean); if (!ids.length) continue;
       const isT1 = pk.startsWith('t1');
-      const won  = isT1 ? t1p > t2p : t2p > t1p;
+      const teamWon = isT1 ? t1p > t2p : t2p > t1p;
       for (const id of ids) {
         const p = pd[id]; if (!p) continue;
         p.mp++;
-        if (halve) p.H++; else if (won) p.W++; else p.L++;
         const ps = r.playerStats?.[id];
+        // Use per-pairing outcome when available (stored since pairingWon fix);
+        // fall back to team-level result for legacy records that lack it.
+        const pWon    = ps?.pairingWon    !== undefined ? ps.pairingWon    : teamWon;
+        const pHalved = ps?.pairingHalved !== undefined ? ps.pairingHalved : halve;
+        if (pHalved) p.H++; else if (pWon) p.W++; else p.L++;
         if (ps) { p.pts += ps.pointsContributed ?? 0; p.net += ps.netUnderPar ?? 0; }
         p.skins += (r.playerSkins?.[id] ?? 0) as number;
         if (!p.fmtRec[m.format]) p.fmtRec[m.format]={W:0,L:0,H:0};
-        if (halve) p.fmtRec[m.format].H++; else if (won) p.fmtRec[m.format].W++; else p.fmtRec[m.format].L++;
+        if (pHalved) p.fmtRec[m.format].H++; else if (pWon) p.fmtRec[m.format].W++; else p.fmtRec[m.format].L++;
       }
     }
   }
@@ -1349,14 +1353,17 @@ function exportTournamentCSV(tData: Tournament) {
   const pairMap: Record<string,{ids:string[];W:number;L:number;H:number;pts:number;fmts:string[]}> = {};
   for (const r of matchResults) {
     const m = matchMap.get(r.matchId); if (!m) continue;
-    const t1p = r.teamPoints?.team1 ?? 0; const t2p = r.teamPoints?.team2 ?? 0; const halve = t1p===t2p;
+    const t1p = r.teamPoints?.team1 ?? 0; const t2p = r.teamPoints?.team2 ?? 0; const teamHalve = t1p===t2p;
     for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
       const ids = (rawIds as string[]).filter(Boolean); if (ids.length < 2) continue;
       const key = [...ids].sort().join('|');
-      const isT1 = pk.startsWith('t1'); const won = isT1 ? t1p>t2p : t2p>t1p;
+      const isT1 = pk.startsWith('t1'); const teamWon = isT1 ? t1p>t2p : t2p>t1p;
+      const ps0 = r.playerStats?.[ids[0]];
+      const pWon    = ps0?.pairingWon    !== undefined ? ps0.pairingWon    : teamWon;
+      const pHalved = ps0?.pairingHalved !== undefined ? ps0.pairingHalved : teamHalve;
       if (!pairMap[key]) pairMap[key]={ids,W:0,L:0,H:0,pts:0,fmts:[]};
       const pair = pairMap[key];
-      if (halve) pair.H++; else if (won) pair.W++; else pair.L++;
+      if (pHalved) pair.H++; else if (pWon) pair.W++; else pair.L++;
       pair.pts += ids.reduce((s,id)=>s+(r.playerStats?.[id]?.pointsContributed??0),0)/ids.length;
       if (!pair.fmts.includes(m.format)) pair.fmts.push(m.format);
     }
@@ -1545,6 +1552,39 @@ function GolfScoringApp() {
   const scoreSaveTimerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   const localScoresRef = useRef<Record<string,(number|null)[]>>({});
   useEffect(() => { localScoresRef.current = localScores; }, [localScores]);
+
+  // ── Migrate legacy match results: backfill pairingWon/pairingHalved ──────────
+  // Old records only store team totals; derive per-pairing outcome from
+  // pointsContributed (which was always computed per-pairing correctly).
+  useEffect(() => {
+    if (!tData || !tournId) return;
+    const results = tData.matchResults ?? [];
+    const needsMigration = results.some(r =>
+      r.playerStats && Object.values(r.playerStats).some(ps => ps.pairingWon === undefined)
+    );
+    if (!needsMigration) return;
+
+    updateTournament(d => {
+      const migratedResults = (d.matchResults ?? []).map(r => {
+        if (!r.playerStats) return r;
+        const fmt = FORMATS[r.format];
+        if (!fmt || fmt.perHole) return r; // perHole: team result already correct
+        const fullShare = fmt.pointsPerMatchup / fmt.ppp; // pts a player earns for a win
+        const newStats = Object.fromEntries(
+          Object.entries(r.playerStats).map(([id, ps]) => {
+            if (ps.pairingWon !== undefined) return [id, ps]; // already migrated
+            const contrib = ps.pointsContributed ?? 0;
+            const pairingWon    = contrib >= fullShare - 0.001;
+            const pairingHalved = !pairingWon && contrib > 0.001;
+            return [id, { ...ps, pairingWon, pairingHalved }];
+          })
+        );
+        return { ...r, playerStats: newStats };
+      });
+      return { ...d, matchResults: migratedResults };
+    }).catch(err => console.error('Pairing outcome migration failed:', err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tData?.matchResults?.length, tournId]);
 
   // ── Global Error Handler ─────────────────────────────────────────────────────
   // Catch all unhandled promise rejections to prevent silent failures
@@ -2326,6 +2366,7 @@ function GolfScoringApp() {
 
     const playerPointsContrib: Record<string,number> = {};
     const playerNetUnderPar: Record<string,number> = {};
+    const playerPairingOutcome: Record<string,{won:boolean;halved:boolean}> = {};
     allIds.forEach(id => { playerPointsContrib[id]=0; playerNetUnderPar[id]=0; });
 
     if (fmt.perHole) {
@@ -2346,6 +2387,12 @@ function GolfScoringApp() {
           pair.ids.filter(Boolean).forEach(id => { playerPointsContrib[id]=(playerPointsContrib[id]||0)+share; });
         });
       }
+      // perHole: pairing outcome = team outcome
+      const teamHalve = matchupPts.team1 === matchupPts.team2;
+      allIds.forEach(id => {
+        const isT1 = t1Ids.includes(id);
+        playerPairingOutcome[id] = { won: teamHalve ? false : (isT1 ? matchupPts.team1 > matchupPts.team2 : matchupPts.team2 > matchupPts.team1), halved: teamHalve };
+      });
     } else {
       const pairs = getMatchupPairs(m.format);
       for (const [a,b] of pairs) {
@@ -2365,6 +2412,9 @@ function GolfScoringApp() {
           aIds.forEach(id => { playerPointsContrib[id]=(playerPointsContrib[id]||0)+(pts/2)/aIds.length; });
           bIds.forEach(id => { playerPointsContrib[id]=(playerPointsContrib[id]||0)+(pts/2)/bIds.length; });
         }
+        // Store per-pairing outcome so stats show the individual matchup result, not team totals
+        aIds.forEach(id => { playerPairingOutcome[id] = { won: t1Won, halved }; });
+        bIds.forEach(id => { playerPairingOutcome[id] = { won: t2Won, halved }; });
       }
     }
 
@@ -2383,12 +2433,14 @@ function GolfScoringApp() {
       }
     }
 
-    const playerStatsRecord: Record<string,{pointsContributed:number;netUnderPar:number;matchWon:boolean}> = {};
+    const playerStatsRecord: Record<string,{pointsContributed:number;netUnderPar:number;matchWon:boolean;pairingWon?:boolean;pairingHalved?:boolean}> = {};
     allIds.forEach(id => {
       playerStatsRecord[id] = {
         pointsContributed: playerPointsContrib[id] || 0,
         netUnderPar: playerNetUnderPar[id] || 0,
         matchWon: winnerTeam === (t1Ids.includes(id) ? 'team1' : 'team2'),
+        pairingWon: playerPairingOutcome[id]?.won ?? false,
+        pairingHalved: playerPairingOutcome[id]?.halved ?? false,
       };
     });
 
@@ -4794,26 +4846,29 @@ function GolfScoringApp() {
       const m = matchMap.get(r.matchId); if (!m) continue;
       const t1p = r.teamPoints.team1 ?? 0;
       const t2p = r.teamPoints.team2 ?? 0;
-      const halve = t1p === t2p;
+      const teamHalve = t1p === t2p;
       for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
         const ids = (rawIds as string[]).filter(Boolean);
         if (!ids.length) continue;
         const isT1 = pk.startsWith('t1');
-        const won  = isT1 ? t1p > t2p : t2p > t1p;
+        const teamWon = isT1 ? t1p > t2p : t2p > t1p;
         for (const id of ids) {
           const p = pd[id]; if (!p) continue;
           p.matchesPlayed++;
           p.holesPlayed += m.holes;
-          if (halve) p.H++; else if (won) p.W++; else p.L++;
           const ps = r.playerStats?.[id];
+          // Use per-pairing outcome when available; fall back to team result for legacy records.
+          const pWon    = ps?.pairingWon    !== undefined ? ps.pairingWon    : teamWon;
+          const pHalved = ps?.pairingHalved !== undefined ? ps.pairingHalved : teamHalve;
+          if (pHalved) p.H++; else if (pWon) p.W++; else p.L++;
           if (ps) { p.pts += ps.pointsContributed ?? 0; p.net += ps.netUnderPar ?? 0; }
           p.skins += (r.playerSkins?.[id] ?? 0) as number;
           if (!p.fmtRec[m.format]) p.fmtRec[m.format]={W:0,L:0,H:0};
-          if (halve) p.fmtRec[m.format].H++; else if (won) p.fmtRec[m.format].W++; else p.fmtRec[m.format].L++;
+          if (pHalved) p.fmtRec[m.format].H++; else if (pWon) p.fmtRec[m.format].W++; else p.fmtRec[m.format].L++;
           for (const pid2 of ids) {
             if (pid2===id) continue;
             if (!p.partners[pid2]) p.partners[pid2]={W:0,L:0,H:0,pts:0};
-            if (halve) p.partners[pid2].H++; else if (won) p.partners[pid2].W++; else p.partners[pid2].L++;
+            if (pHalved) p.partners[pid2].H++; else if (pWon) p.partners[pid2].W++; else p.partners[pid2].L++;
             p.partners[pid2].pts += ps?.pointsContributed ?? 0;
           }
         }
@@ -4824,14 +4879,17 @@ function GolfScoringApp() {
     const pairMap: Record<string,{ids:string[];names:string[];W:number;L:number;H:number;pts:number;fmts:string[]}> = {};
     for (const r of completedResults) {
       const m = matchMap.get(r.matchId); if (!m) continue;
-      const t1p = r.teamPoints.team1 ?? 0; const t2p = r.teamPoints.team2 ?? 0; const halve = t1p===t2p;
+      const t1p = r.teamPoints.team1 ?? 0; const t2p = r.teamPoints.team2 ?? 0; const teamHalve = t1p===t2p;
       for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
         const ids = (rawIds as string[]).filter(Boolean); if (ids.length < 2) continue;
         const key = [...ids].sort().join('|');
-        const isT1 = pk.startsWith('t1'); const won = isT1 ? t1p>t2p : t2p>t1p;
+        const isT1 = pk.startsWith('t1'); const teamWon = isT1 ? t1p>t2p : t2p>t1p;
+        const ps0 = r.playerStats?.[ids[0]];
+        const pWon    = ps0?.pairingWon    !== undefined ? ps0.pairingWon    : teamWon;
+        const pHalved = ps0?.pairingHalved !== undefined ? ps0.pairingHalved : teamHalve;
         if (!pairMap[key]) pairMap[key]={ids,names:ids.map(id=>allPlayers.find(p=>p.id===id)?.name??'?'),W:0,L:0,H:0,pts:0,fmts:[]};
         const pair = pairMap[key];
-        if (halve) pair.H++; else if (won) pair.W++; else pair.L++;
+        if (pHalved) pair.H++; else if (pWon) pair.W++; else pair.L++;
         pair.pts += ids.reduce((s,id)=>s+(r.playerStats?.[id]?.pointsContributed??0),0)/ids.length;
         if (!pair.fmts.includes(m.format)) pair.fmts.push(m.format);
       }
