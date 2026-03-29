@@ -1243,158 +1243,207 @@ function exportTournamentXLSX(
   tData: Tournament,
   allMatchScores: Record<string, Record<string, (number|null)[]>>
 ) {
-  const wb   = XLSX.utils.book_new();
-  const year = new Date().getFullYear();
-  const slug = tData.name.replace(/\s+/g,'-').toLowerCase();
-  const rows: (string|number|null)[][] = [];
-  const row  = (...cells: unknown[]) => rows.push(cells.map(v => v == null ? null : (typeof v === 'number' ? v : String(v))));
-  const blank = () => rows.push([]);
-  const head  = (...cells: unknown[]) => rows.push(cells.map(c => String(c).toUpperCase()));
+  const wb      = XLSX.utils.book_new();
+  const year    = new Date().getFullYear();
+  const slug    = tData.name.replace(/\s+/g,'-').toLowerCase();
+  const aoa     = (...cells: unknown[]): (string|number|null)[] =>
+    cells.map(v => v == null ? null : (typeof v === 'number' ? v : String(v)));
 
   const matchResults = tData.matchResults ?? [];
   const matches      = tData.matches ?? [];
   const players      = tData.players ?? [];
   const team1Ids     = new Set(tData.teams?.team1 ?? []);
-  const team2Ids     = new Set(tData.teams?.team2 ?? []);
   const team1Name    = tData.teamNames?.team1 ?? 'Team 1';
   const team2Name    = tData.teamNames?.team2 ?? 'Team 2';
   const matchMap     = new Map<string,Match>(matches.map(m => [m.id, m]));
+  const pName        = (id: string) => players.find(p => p.id === id)?.name ?? id;
 
-  // ── Section 1: Tournament summary ─────────────────────────────────────────
-  head('TOURNAMENT SUMMARY');
-  row('Tournament',   tData.name);
-  row('Year',         year);
-  row('Export Date',  new Date().toLocaleDateString());
-  row('Tournament ID', tData.id);
-  row('Team 1',       team1Name);
-  row('Team 2',       team2Name);
-  const t1pts = matchResults.reduce((s,r)=>s+(r.teamPoints?.team1??0),0);
-  const t2pts = matchResults.reduce((s,r)=>s+(r.teamPoints?.team2??0),0);
-  row('Team 1 Total Points', t1pts.toFixed(1));
-  row('Team 2 Total Points', t2pts.toFixed(1));
-  const winner = t1pts > t2pts ? team1Name : t2pts > t1pts ? team2Name : 'Tied';
-  row('Winner', winner);
-  row('Matches Played', matchResults.length);
-  row('Matches Remaining', matches.length - matchResults.length);
-  blank();
-
-  // ── Section 2: Match results ───────────────────────────────────────────────
-  head('MATCH RESULTS');
-  row('Date','Format','Course/Tee','Start Hole','Holes',`${team1Name} Pts`,`${team2Name} Pts`,'Winner','T1 Holes Won','T2 Holes Won','Total Holes');
-  for (const r of matchResults) {
-    const m = matchMap.get(r.matchId);
-    const fmt = m ? (FORMATS[m.format]?.name ?? m.format) : r.format;
-    const course = m ? `${m.courseId ?? ''}/${m.teeId ?? ''}` : '';
-    const t1p = r.teamPoints?.team1 ?? 0;
-    const t2p = r.teamPoints?.team2 ?? 0;
-    const w   = t1p > t2p ? team1Name : t2p > t1p ? team2Name : 'Halved';
-    row(new Date(r.completedAt).toLocaleDateString(), fmt, course,
-        m?.startHole ?? '', r.holes, t1p.toFixed(1), t2p.toFixed(1), w,
-        r.team1HolesWon ?? '', r.team2HolesWon ?? '',
-        (r.team1HolesWon??0)+(r.team2HolesWon??0));
-  }
-  blank();
-
-  // ── Section 3: Player statistics ──────────────────────────────────────────
-  head('PLAYER STATISTICS');
-  row('Player','Team','Matches Played','Wins','Losses','Halves','Win %',
-      'Points','Contribution %','Skins Won','Net Birdies/Better',
-      'Net Birdies per Match','Best Format','Best Format Record');
-
-  // Compute per-player stats
-  const pd: Record<string,{W:number;L:number;H:number;pts:number;skins:number;net:number;mp:number;fmtRec:Record<string,{W:number;L:number;H:number}>}> = {};
-  players.forEach(p => { pd[p.id]={W:0,L:0,H:0,pts:0,skins:0,net:0,mp:0,fmtRec:{}}; });
+  // ── Shared: compute per-player stats ──────────────────────────────────────
+  const pd: Record<string,{W:number;L:number;H:number;pts:number;skins:number;net:number;mp:number;
+    fmtRec:Record<string,{W:number;L:number;H:number}>;matchSkins:Record<string,number>}> = {};
+  players.forEach(p => { pd[p.id]={W:0,L:0,H:0,pts:0,skins:0,net:0,mp:0,fmtRec:{},matchSkins:{}}; });
   const teamTotals: Record<string,number> = { team1: 0, team2: 0 };
 
   for (const r of matchResults) {
     const m = matchMap.get(r.matchId); if (!m) continue;
-    const t1p = r.teamPoints?.team1 ?? 0;
-    const t2p = r.teamPoints?.team2 ?? 0;
-    const halve = t1p === t2p;
+    const t1p = r.teamPoints?.team1 ?? 0, t2p = r.teamPoints?.team2 ?? 0, halve = t1p === t2p;
     teamTotals.team1 += t1p; teamTotals.team2 += t2p;
     for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
       const ids = (rawIds as string[]).filter(Boolean); if (!ids.length) continue;
-      const isT1 = pk.startsWith('t1');
-      const teamWon = isT1 ? t1p > t2p : t2p > t1p;
+      const isT1 = pk.startsWith('t1'), teamWon = isT1 ? t1p > t2p : t2p > t1p;
       for (const id of ids) {
         const p = pd[id]; if (!p) continue;
         p.mp++;
         const ps = r.playerStats?.[id];
-        // Use per-pairing outcome when available (stored since pairingWon fix);
-        // fall back to team-level result for legacy records that lack it.
         const pWon    = ps?.pairingWon    !== undefined ? ps.pairingWon    : teamWon;
         const pHalved = ps?.pairingHalved !== undefined ? ps.pairingHalved : halve;
         if (pHalved) p.H++; else if (pWon) p.W++; else p.L++;
         if (ps) { p.pts += ps.pointsContributed ?? 0; p.net += ps.netUnderPar ?? 0; }
-        p.skins += (r.playerSkins?.[id] ?? 0) as number;
+        const sk = (r.playerSkins?.[id] ?? 0) as number;
+        p.skins += sk;
+        p.matchSkins[r.matchId] = sk;
         if (!p.fmtRec[m.format]) p.fmtRec[m.format]={W:0,L:0,H:0};
         if (pHalved) p.fmtRec[m.format].H++; else if (pWon) p.fmtRec[m.format].W++; else p.fmtRec[m.format].L++;
       }
     }
   }
 
-  for (const p of [...players].sort((a,b)=>(pd[b.id]?.pts??0)-(pd[a.id]?.pts??0))) {
-    const s = pd[p.id]; if (!s) continue;
-    const isT1 = team1Ids.has(p.id);
-    const teamTotal = isT1 ? teamTotals.team1 : teamTotals.team2;
-    const contrib   = teamTotal > 0 ? ((s.pts / teamTotal)*100).toFixed(1)+'%' : '—';
-    const total     = s.W + s.L + s.H;
-    const winPct    = total ? (((s.W + s.H*0.5)/total)*100).toFixed(1)+'%' : '—';
-    const netPM     = s.mp > 0 ? (s.net/s.mp).toFixed(2) : '—';
-    const bestFmt   = Object.entries(s.fmtRec).sort((a,b)=>(b[1].W+b[1].H*0.5)-(a[1].W+a[1].H*0.5))[0];
-    const bestFmtName = bestFmt ? (FORMATS[bestFmt[0]]?.name ?? bestFmt[0]) : '—';
-    const bestFmtRec  = bestFmt ? `${bestFmt[1].W}-${bestFmt[1].L}${bestFmt[1].H?`-${bestFmt[1].H}`:''}` : '—';
-    row(p.name, isT1?team1Name:team2Name, s.mp, s.W, s.L, s.H, winPct,
-        s.pts.toFixed(1), contrib, s.skins.toFixed(1), s.net, netPM,
-        bestFmtName, bestFmtRec);
+  const wpNum = (s: typeof pd[string]) => {
+    const t = s.W+s.L+s.H; return t ? (s.W+s.H*0.5)/t : 0;
+  };
+  const wpStr = (s: typeof pd[string]) => {
+    const t = s.W+s.L+s.H; return t ? (((s.W+s.H*0.5)/t)*100).toFixed(1)+'%' : '—';
+  };
+  const recStr = (w:number,l:number,h:number) => `${w}-${l}${h?`-${h}`:''}`;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHEET 1 — Summary {year}
+  // ══════════════════════════════════════════════════════════════════════════
+  const s1: (string|number|null)[][] = [];
+  const r1 = (...c: unknown[]) => s1.push(aoa(...c));
+  const h1 = (...c: unknown[]) => s1.push(c.map(x=>String(x).toUpperCase()));
+
+  h1('TOURNAMENT SUMMARY');
+  r1('Tournament', tData.name); r1('Year', year);
+  r1('Export Date', new Date().toLocaleDateString());
+  r1('Tournament ID', tData.id);
+  r1('Team 1', team1Name); r1('Team 2', team2Name);
+  const t1pts = matchResults.reduce((s,r)=>s+(r.teamPoints?.team1??0),0);
+  const t2pts = matchResults.reduce((s,r)=>s+(r.teamPoints?.team2??0),0);
+  r1('Team 1 Total Points', t1pts.toFixed(1));
+  r1('Team 2 Total Points', t2pts.toFixed(1));
+  r1('Winner', t1pts > t2pts ? team1Name : t2pts > t1pts ? team2Name : 'Tied');
+  r1('Matches Played', matchResults.length);
+  r1('Matches Remaining', matches.length - matchResults.length);
+  s1.push([]);
+
+  h1('MATCH RESULTS');
+  r1('Date','Format','Course','Tee','Start Hole','Holes',`${team1Name} Pts`,`${team2Name} Pts`,'Winner','T1 Holes Won','T2 Holes Won');
+  for (const r of matchResults) {
+    const m = matchMap.get(r.matchId);
+    const course = tData.courses?.find(c=>c.id===m?.courseId);
+    const t1p = r.teamPoints?.team1??0, t2p = r.teamPoints?.team2??0;
+    r1(new Date(r.completedAt).toLocaleDateString(), FORMATS[m?.format??r.format]?.name??r.format,
+       course?.name??'', m?.teeId??'', m?.startHole??'', r.holes,
+       t1p.toFixed(1), t2p.toFixed(1), t1p>t2p?team1Name:t2p>t1p?team2Name:'Halved',
+       r.team1HolesWon??'', r.team2HolesWon??'');
   }
-  blank();
+  s1.push([]);
 
-  // ── Section 4: Partnership records ────────────────────────────────────────
-  head('PARTNERSHIP RECORDS');
-  row('Player 1','Player 2','Team','Formats Played','Matches','Wins','Losses','Halves','Win %','Points Avg');
-
+  h1('PARTNERSHIP RECORDS');
+  r1('Player 1','Player 2','Team','Formats','Matches','W','L','H','Win %','Pts Avg');
   const pairMap: Record<string,{ids:string[];W:number;L:number;H:number;pts:number;fmts:string[]}> = {};
   for (const r of matchResults) {
     const m = matchMap.get(r.matchId); if (!m) continue;
-    const t1p = r.teamPoints?.team1 ?? 0; const t2p = r.teamPoints?.team2 ?? 0; const teamHalve = t1p===t2p;
-    for (const [pk, rawIds] of Object.entries(m.pairings ?? {})) {
-      const ids = (rawIds as string[]).filter(Boolean); if (ids.length < 2) continue;
-      const key = [...ids].sort().join('|');
-      const isT1 = pk.startsWith('t1'); const teamWon = isT1 ? t1p>t2p : t2p>t1p;
-      const ps0 = r.playerStats?.[ids[0]];
-      const pWon    = ps0?.pairingWon    !== undefined ? ps0.pairingWon    : teamWon;
-      const pHalved = ps0?.pairingHalved !== undefined ? ps0.pairingHalved : teamHalve;
-      if (!pairMap[key]) pairMap[key]={ids,W:0,L:0,H:0,pts:0,fmts:[]};
-      const pair = pairMap[key];
-      if (pHalved) pair.H++; else if (pWon) pair.W++; else pair.L++;
-      pair.pts += ids.reduce((s,id)=>s+(r.playerStats?.[id]?.pointsContributed??0),0)/ids.length;
-      if (!pair.fmts.includes(m.format)) pair.fmts.push(m.format);
+    const t1p=r.teamPoints?.team1??0, t2p=r.teamPoints?.team2??0, tHalve=t1p===t2p;
+    for (const [pk,rawIds] of Object.entries(m.pairings??{})) {
+      const ids=(rawIds as string[]).filter(Boolean); if(ids.length<2) continue;
+      const key=[...ids].sort().join('|');
+      const isT1=pk.startsWith('t1'), tWon=isT1?t1p>t2p:t2p>t1p;
+      const ps0=r.playerStats?.[ids[0]];
+      const pW=ps0?.pairingWon!==undefined?ps0.pairingWon:tWon;
+      const pH=ps0?.pairingHalved!==undefined?ps0.pairingHalved:tHalve;
+      if(!pairMap[key]) pairMap[key]={ids,W:0,L:0,H:0,pts:0,fmts:[]};
+      const pair=pairMap[key];
+      if(pH) pair.H++; else if(pW) pair.W++; else pair.L++;
+      pair.pts+=ids.reduce((s,id)=>s+(r.playerStats?.[id]?.pointsContributed??0),0)/ids.length;
+      if(!pair.fmts.includes(m.format)) pair.fmts.push(m.format);
     }
   }
   for (const pair of Object.values(pairMap).sort((a,b)=>b.pts-a.pts)) {
-    const total = pair.W+pair.L+pair.H;
-    const winPct = total ? (((pair.W+pair.H*0.5)/total)*100).toFixed(1)+'%' : '—';
-    const names  = pair.ids.map(id=>players.find(p=>p.id===id)?.name??'?');
-    const isT1   = team1Ids.has(pair.ids[0]);
-    const fmts   = pair.fmts.map(f=>FORMATS[f]?.name??f).join(', ');
-    row(names[0], names[1], isT1?team1Name:team2Name, fmts, total,
-        pair.W, pair.L, pair.H, winPct, (pair.pts/Math.max(total,1)).toFixed(2));
+    const tot=pair.W+pair.L+pair.H;
+    const wp=tot?(((pair.W+pair.H*0.5)/tot)*100).toFixed(1)+'%':'—';
+    const names=pair.ids.map(id=>pName(id));
+    r1(names[0],names[1],team1Ids.has(pair.ids[0])?team1Name:team2Name,
+       pair.fmts.map(f=>FORMATS[f]?.name??f).join(', '),tot,pair.W,pair.L,pair.H,wp,
+       (pair.pts/Math.max(tot,1)).toFixed(2));
   }
-  blank();
+  s1.push([]);
 
-  // ── Section 5: Player roster ───────────────────────────────────────────────
-  head('PLAYER ROSTER');
-  row('Name','Team','Handicap Index');
-  for (const p of players) {
-    row(p.name, team1Ids.has(p.id)?team1Name:team2Name, p.handicapIndex);
+  h1('PLAYER ROSTER');
+  r1('Name','Team','Handicap Index');
+  for (const p of players) r1(p.name, team1Ids.has(p.id)?team1Name:team2Name, p.handicapIndex);
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1), `Summary ${year}`);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHEET 2 — MVP {year}
+  // ══════════════════════════════════════════════════════════════════════════
+  const s2: (string|number|null)[][] = [];
+  const r2 = (...c: unknown[]) => s2.push(aoa(...c));
+
+  s2.push(['MVP RANKINGS', tData.name, String(year)]);
+  s2.push(['Ranked by Win %. Tiebreaker: Skins Won.']);
+  s2.push([]);
+  r2('Rank','Player','Team','Record','Win %','W','L','H','Matches','Points','Contrib %',
+     'Skins','Net Birdies','Net/Match','Best Format','Best Format Record');
+
+  const ranked = [...players].sort((a,b)=>{
+    const pa=pd[a.id], pb=pd[b.id];
+    const wpDiff = wpNum(pb)-wpNum(pa);
+    return Math.abs(wpDiff)>0.0001 ? wpDiff : (pb?.skins??0)-(pa?.skins??0);
+  });
+
+  ranked.forEach((player, i) => {
+    const s = pd[player.id]; if (!s) return;
+    const isT1  = team1Ids.has(player.id);
+    const tTot  = isT1 ? teamTotals.team1 : teamTotals.team2;
+    const contrib = tTot > 0 ? ((s.pts/tTot)*100).toFixed(1)+'%' : '—';
+    const netPM   = s.mp > 0 ? (s.net/s.mp).toFixed(2) : '—';
+    const bestFmt = Object.entries(s.fmtRec).sort((a,b)=>(b[1].W+b[1].H*0.5)-(a[1].W+a[1].H*0.5))[0];
+    r2(i+1, player.name, isT1?team1Name:team2Name,
+       recStr(s.W,s.L,s.H), wpStr(s), s.W, s.L, s.H, s.mp,
+       s.pts.toFixed(1), contrib, s.skins, s.net, netPM,
+       bestFmt ? (FORMATS[bestFmt[0]]?.name??bestFmt[0]) : '—',
+       bestFmt ? recStr(bestFmt[1].W,bestFmt[1].L,bestFmt[1].H) : '—');
+  });
+
+  s2.push([]);
+  s2.push(['BY FORMAT']);
+  r2('Player','Team',...Object.keys(FORMATS).map(f=>FORMATS[f].name));
+  for (const player of ranked) {
+    const s = pd[player.id]; if (!s) return;
+    const isT1 = team1Ids.has(player.id);
+    r2(player.name, isT1?team1Name:team2Name,
+       ...Object.keys(FORMATS).map(f => s.fmtRec[f] ? recStr(s.fmtRec[f].W,s.fmtRec[f].L,s.fmtRec[f].H) : '—'));
   }
 
-  // ── Sheet 1: Stats (existing sections) ────────────────────────────────────
-  const ws1 = XLSX.utils.aoa_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws1, 'Stats');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2), `MVP ${year}`);
 
-  // ── Sheet 2: Scorecards (hole-by-hole per match / pairing / player) ────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHEET 3 — Skins {year}
+  // ══════════════════════════════════════════════════════════════════════════
+  const s3: (string|number|null)[][] = [];
+  const r3 = (...c: unknown[]) => s3.push(aoa(...c));
+
+  s3.push(['SKINS LEADERBOARD', tData.name, String(year)]);
+  s3.push([]);
+  r3('Rank','Player','Team','Total Skins');
+  [...players].sort((a,b)=>(pd[b.id]?.skins??0)-(pd[a.id]?.skins??0))
+    .forEach((player, i) => {
+      const s = pd[player.id]; if (!s) return;
+      r3(i+1, player.name, team1Ids.has(player.id)?team1Name:team2Name, s.skins);
+    });
+
+  s3.push([]); s3.push([]);
+  s3.push(['SKINS BY MATCH']);
+  // Header: Player | Match1 | Match2 | ...
+  const matchLabels = matchResults.map(r => {
+    const m = matchMap.get(r.matchId);
+    return `${FORMATS[m?.format??r.format]?.name??r.format} ${new Date(r.completedAt).toLocaleDateString()}`;
+  });
+  r3('Player','Team','Total',...matchLabels);
+  for (const player of ranked) {
+    const s = pd[player.id]; if (!s) return;
+    const perMatch = matchResults.map(r => s.matchSkins[r.matchId] ?? 0);
+    r3(player.name, team1Ids.has(player.id)?team1Name:team2Name, s.skins, ...perMatch);
+  }
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s3), `Skins ${year}`);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHEET 4 — Scorecards {year}
+  // ══════════════════════════════════════════════════════════════════════════
   const sc: (string|number|null)[][] = [];
 
   const holeStrokes = (playerHcp: number, rank: number) =>
@@ -1409,42 +1458,35 @@ function exportTournamentXLSX(
     const holes  = m.holes ?? 18;
     const hNums  = Array.from({length: holes}, (_, i) => ((start - 1 + i) % 18) + 1);
     const tHoles = hNums.map(h => tee?.holes.find(x => x.h === h) ?? null);
-    const pName  = (id: string) => players.find(p => p.id === id)?.name ?? id;
     const pHcp   = (id: string) => {
       const pl = players.find(p => p.id === id);
       return pl && tee ? courseHcp(pl.handicapIndex, effectiveSlope(tee, pl.gender)) : 0;
     };
 
-    // Match header
-    const t1p = r.teamPoints?.team1 ?? 0, t2p = r.teamPoints?.team2 ?? 0;
-    const resultStr = t1p > t2p ? `${team1Name} win (${t1p}–${t2p})` : t2p > t1p ? `${team2Name} win (${t2p}–${t1p})` : `Halved (${t1p}–${t2p})`;
-    sc.push([`${FORMATS[m.format]?.name ?? m.format}`, course?.name ?? '', `${tee?.name ?? ''} tee`, new Date(r.completedAt).toLocaleDateString(), resultStr]);
+    const t1p = r.teamPoints?.team1??0, t2p = r.teamPoints?.team2??0;
+    const resultStr = t1p>t2p?`${team1Name} win (${t1p}–${t2p})`:t2p>t1p?`${team2Name} win (${t2p}–${t1p})`:`Halved (${t1p}–${t2p})`;
+    sc.push([`${FORMATS[m.format]?.name??m.format}`, course?.name??'', `${tee?.name??''} tee`, new Date(r.completedAt).toLocaleDateString(), resultStr]);
     sc.push(['', ...hNums.map(String), 'TOTAL', 'NET TOT']);
-    sc.push(['Par', ...tHoles.map(h => h?.par ?? ''), tHoles.reduce((s,h)=>s+(h?.par??0),0), '']);
-    sc.push(['HCP Rank', ...tHoles.map(h => h?.rank ?? ''), '', '']);
+    sc.push(['Par', ...tHoles.map(h=>h?.par??''), tHoles.reduce((s,h)=>s+(h?.par??0),0), '']);
+    sc.push(['HCP Rank', ...tHoles.map(h=>h?.rank??''), '', '']);
     sc.push([]);
 
-    const pairs = getMatchupPairs(m.format);
-    for (const [aPk, bPk] of pairs) {
-      const aIds = (m.pairings[aPk] ?? []).filter(Boolean);
-      const bIds = (m.pairings[bPk] ?? []).filter(Boolean);
+    for (const [aPk, bPk] of getMatchupPairs(m.format)) {
+      const aIds = (m.pairings[aPk]??[]).filter(Boolean);
+      const bIds = (m.pairings[bPk]??[]).filter(Boolean);
       if (!aIds.length && !bIds.length) continue;
+      sc.push([`${aIds.map(pName).join(' & ')||'—'}  vs  ${bIds.map(pName).join(' & ')||'—'}`]);
 
-      const aLabel = aIds.map(pName).join(' & ') || '—';
-      const bLabel = bIds.map(pName).join(' & ') || '—';
-      sc.push([`${aLabel}  vs  ${bLabel}`]);
-
-      for (const [side, ids] of [[aLabel, aIds],[bLabel, bIds]] as [string, string[]][]) {
-        void side;
+      for (const ids of [aIds, bIds]) {
         for (const id of ids) {
           const hcp   = pHcp(id);
           const gross = hNums.map((_, i) => scores[id]?.[i] ?? null);
           const net   = tHoles.map((th, i) => {
-            const g = gross[i]; if (g == null) return null;
+            const g = gross[i]; if (g==null) return null;
             return g - (th ? holeStrokes(hcp, th.rank) : 0);
           });
-          const gTot = gross.every(v=>v==null) ? null : gross.reduce((s,v)=>s+(v??0),0);
-          const nTot = net.every(v=>v==null)   ? null : net.reduce((s,v)=>s+(v??0),0);
+          const gTot = gross.every(v=>v==null)?null:gross.reduce((s,v)=>s+(v??0),0);
+          const nTot = net.every(v=>v==null)?null:net.reduce((s,v)=>s+(v??0),0);
           sc.push([`${pName(id)} (HC ${hcp})`, ...gross, gTot, nTot]);
         }
         sc.push([]);
@@ -1454,8 +1496,7 @@ function exportTournamentXLSX(
   }
 
   if (!sc.length) sc.push(['No completed matches with scores yet.']);
-  const ws2 = XLSX.utils.aoa_to_sheet(sc);
-  XLSX.utils.book_append_sheet(wb, ws2, 'Scorecards');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sc), `Scorecards ${year}`);
 
   // ── Write file ─────────────────────────────────────────────────────────────
   XLSX.writeFile(wb, `${slug}-${year}-stats.xlsx`);
