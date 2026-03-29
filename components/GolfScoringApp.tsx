@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, Component, memo, useMemo, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Trophy, Plus, Trash2, Save, Award, ChevronLeft, ChevronRight,
   Check, Flag, Lock, Users, LogOut, Shield, ChevronDown, BookOpen,
@@ -1238,12 +1239,15 @@ function exportTournamentJSON(tData: Tournament) {
   );
 }
 
-function exportTournamentCSV(tData: Tournament) {
-  const year  = new Date().getFullYear();
-  const slug  = tData.name.replace(/\s+/g,'-').toLowerCase();
-  const rows: string[][] = [];
-  const esc   = (v: unknown) => `"${String(v ?? '').replace(/"/g,'""')}"`;
-  const row   = (...cells: unknown[]) => rows.push(cells.map(String));
+function exportTournamentXLSX(
+  tData: Tournament,
+  allMatchScores: Record<string, Record<string, (number|null)[]>>
+) {
+  const wb   = XLSX.utils.book_new();
+  const year = new Date().getFullYear();
+  const slug = tData.name.replace(/\s+/g,'-').toLowerCase();
+  const rows: (string|number|null)[][] = [];
+  const row  = (...cells: unknown[]) => rows.push(cells.map(v => v == null ? null : (typeof v === 'number' ? v : String(v))));
   const blank = () => rows.push([]);
   const head  = (...cells: unknown[]) => rows.push(cells.map(c => String(c).toUpperCase()));
 
@@ -1386,9 +1390,75 @@ function exportTournamentCSV(tData: Tournament) {
     row(p.name, team1Ids.has(p.id)?team1Name:team2Name, p.handicapIndex);
   }
 
-  // ── Serialise to CSV ───────────────────────────────────────────────────────
-  const csv = rows.map(r => r.map(esc).join(',')).join('\n');
-  downloadFile(`${slug}-${year}-stats.csv`, csv, 'text/csv');
+  // ── Sheet 1: Stats (existing sections) ────────────────────────────────────
+  const ws1 = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws1, 'Stats');
+
+  // ── Sheet 2: Scorecards (hole-by-hole per match / pairing / player) ────────
+  const sc: (string|number|null)[][] = [];
+
+  const holeStrokes = (playerHcp: number, rank: number) =>
+    Math.floor(playerHcp / 18) + (playerHcp % 18 >= rank && rank > 0 ? 1 : 0);
+
+  for (const r of matchResults) {
+    const m = matchMap.get(r.matchId); if (!m) continue;
+    const scores = allMatchScores[m.id] ?? {};
+    const course = tData.courses?.find(c => c.id === m.courseId);
+    const tee    = course?.tees.find(t => t.name === m.teeId) ?? null;
+    const start  = m.startHole ?? 1;
+    const holes  = m.holes ?? 18;
+    const hNums  = Array.from({length: holes}, (_, i) => ((start - 1 + i) % 18) + 1);
+    const tHoles = hNums.map(h => tee?.holes.find(x => x.h === h) ?? null);
+    const pName  = (id: string) => players.find(p => p.id === id)?.name ?? id;
+    const pHcp   = (id: string) => {
+      const pl = players.find(p => p.id === id);
+      return pl && tee ? courseHcp(pl.handicapIndex, effectiveSlope(tee, pl.gender)) : 0;
+    };
+
+    // Match header
+    const t1p = r.teamPoints?.team1 ?? 0, t2p = r.teamPoints?.team2 ?? 0;
+    const resultStr = t1p > t2p ? `${team1Name} win (${t1p}–${t2p})` : t2p > t1p ? `${team2Name} win (${t2p}–${t1p})` : `Halved (${t1p}–${t2p})`;
+    sc.push([`${FORMATS[m.format]?.name ?? m.format}`, course?.name ?? '', `${tee?.name ?? ''} tee`, new Date(r.completedAt).toLocaleDateString(), resultStr]);
+    sc.push(['', ...hNums.map(String), 'TOTAL', 'NET TOT']);
+    sc.push(['Par', ...tHoles.map(h => h?.par ?? ''), tHoles.reduce((s,h)=>s+(h?.par??0),0), '']);
+    sc.push(['HCP Rank', ...tHoles.map(h => h?.rank ?? ''), '', '']);
+    sc.push([]);
+
+    const pairs = getMatchupPairs(m.format);
+    for (const [aPk, bPk] of pairs) {
+      const aIds = (m.pairings[aPk] ?? []).filter(Boolean);
+      const bIds = (m.pairings[bPk] ?? []).filter(Boolean);
+      if (!aIds.length && !bIds.length) continue;
+
+      const aLabel = aIds.map(pName).join(' & ') || '—';
+      const bLabel = bIds.map(pName).join(' & ') || '—';
+      sc.push([`${aLabel}  vs  ${bLabel}`]);
+
+      for (const [side, ids] of [[aLabel, aIds],[bLabel, bIds]] as [string, string[]][]) {
+        void side;
+        for (const id of ids) {
+          const hcp   = pHcp(id);
+          const gross = hNums.map((_, i) => scores[id]?.[i] ?? null);
+          const net   = tHoles.map((th, i) => {
+            const g = gross[i]; if (g == null) return null;
+            return g - (th ? holeStrokes(hcp, th.rank) : 0);
+          });
+          const gTot = gross.every(v=>v==null) ? null : gross.reduce((s,v)=>s+(v??0),0);
+          const nTot = net.every(v=>v==null)   ? null : net.reduce((s,v)=>s+(v??0),0);
+          sc.push([`${pName(id)} (HC ${hcp})`, ...gross, gTot, nTot]);
+        }
+        sc.push([]);
+      }
+    }
+    sc.push([]); sc.push([]);
+  }
+
+  if (!sc.length) sc.push(['No completed matches with scores yet.']);
+  const ws2 = XLSX.utils.aoa_to_sheet(sc);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Scorecards');
+
+  // ── Write file ─────────────────────────────────────────────────────────────
+  XLSX.writeFile(wb, `${slug}-${year}-stats.xlsx`);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -3476,8 +3546,8 @@ function GolfScoringApp() {
             <button onClick={()=>exportTournamentJSON(tData)} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-sm border border-white/10 hover:border-[#C9A227]/60 text-white/70 hover:text-[#C9A227] transition-all" style={{background:'rgba(255,255,255,0.05)'}}>
               <span>⬇</span> JSON
             </button>
-            <button onClick={()=>exportTournamentCSV(tData)} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-sm border border-white/10 hover:border-emerald-500/60 text-white/70 hover:text-emerald-400 transition-all" style={{background:'rgba(255,255,255,0.05)'}}>
-              <span>⬇</span> CSV / Spreadsheet
+            <button onClick={()=>exportTournamentXLSX(tData,allMatchScores)} className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-sm border border-white/10 hover:border-emerald-500/60 text-white/70 hover:text-emerald-400 transition-all" style={{background:'rgba(255,255,255,0.05)'}}>
+              <span>⬇</span> Excel (.xlsx)
             </button>
           </div>
         </div>
