@@ -4897,9 +4897,16 @@ function GolfScoringApp() {
     const partnerships = Object.values(pairMap).sort((a,b)=>b.pts-a.pts||b.W-a.W);
 
     // ── Sorted player list ───────────────────────────────────────────────────
+    const calcWinPct = (p: PDetail|undefined) => {
+      if (!p) return 0;
+      const t = p.W + p.L + p.H; if (!t) return 0;
+      return (p.W + p.H * 0.5) / t;
+    };
     const sortedPlayers = [...allPlayers].sort((a,b)=>{
       const pa=pd[a.id], pb=pd[b.id];
-      return (pb?.pts??0)-(pa?.pts??0)||(pb?.skins??0)-(pa?.skins??0);
+      const wpDiff = calcWinPct(pb) - calcWinPct(pa);
+      if (Math.abs(wpDiff) > 0.0001) return wpDiff;
+      return (pb?.skins??0)-(pa?.skins??0);
     });
 
     const recLabel = (w:number,l:number,h:number) => `${w}-${l}${h?`-${h}`:''}`;
@@ -5062,15 +5069,15 @@ function GolfScoringApp() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bebas font-black text-2xl text-emerald-400 leading-none">{p.pts.toFixed(1)}</div>
-                      <div className="text-xs text-white/30">pts</div>
+                      <div className="font-bebas font-black text-2xl text-emerald-400 leading-none">{winPct(p.W,p.L,p.H)}</div>
+                      <div className="text-xs text-white/30">win %</div>
                     </div>
                   </div>
                   {/* Stats grid */}
                   <div className="grid grid-cols-4 divide-x divide-white/5">
                     {([
                       ['Record', recLabel(p.W,p.L,p.H), p.W>p.L?'text-emerald-400':p.L>p.W?'text-red-400':'text-white/60'],
-                      ['Win %', winPct(p.W,p.L,p.H), 'text-white'],
+                      ['Pts', p.pts.toFixed(1), 'text-white'],
                       ['Skins', p.skins.toFixed(1), 'text-yellow-400'],
                       ['Contrib', teamTotal>0?`${contribPct}%`:'—', 'text-purple-400'],
                     ] as const).map(([lbl,val,col])=>(
