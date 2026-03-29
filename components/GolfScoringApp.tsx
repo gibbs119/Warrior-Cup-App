@@ -4899,7 +4899,7 @@ function GolfScoringApp() {
     // ── Sorted player list ───────────────────────────────────────────────────
     const sortedPlayers = [...allPlayers].sort((a,b)=>{
       const pa=pd[a.id], pb=pd[b.id];
-      return (pb?.pts??0)-(pa?.pts??0)||(pb?.W??0)-(pa?.W??0)||(pb?.net??0)-(pa?.net??0);
+      return (pb?.pts??0)-(pa?.pts??0)||(pb?.skins??0)-(pa?.skins??0);
     });
 
     const recLabel = (w:number,l:number,h:number) => `${w}-${l}${h?`-${h}`:''}`;
